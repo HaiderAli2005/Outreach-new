@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shared pool · graphs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0F0E0D; --surface:#161513; --surface-2:#1D1B19; --field:#110F0D;
+  --hair:rgba(255,255,255,.08); --hair-2:rgba(255,255,255,.14);
+  --ink:#F2EEE7; --ink-2:#B9B1A5; --ink-3:#857D72; --ink-4:#676056;
+  --gold:#D4AE72; --gold-soft:rgba(217,178,123,.1); --on-gold:#15100C;
+  --good:#8CCB9F; --warn:#E3B25C; --bad:#E5836F;
+  /* maturity ramp: validated for CVD separation and contrast on this surface */
+  --m1:#F3E2C6; --m2:#D4AE72; --m3:#8A6A3C;
+  --f:"Geist",ui-sans-serif,system-ui,sans-serif; --m:"Geist Mono",ui-monospace,monospace;
+  --ease:cubic-bezier(.2,.7,.2,1);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 13.5px/1.5 var(--f);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:26px 24px 60px}
+
+.head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
+.head h1{margin:0;font:600 17px var(--f);letter-spacing:-.01em}
+.head .sub{font:400 12.5px var(--f);color:var(--ink-3)}
+.head .sp{flex:1}
+.seg{display:inline-flex;padding:3px;border-radius:999px;box-shadow:inset 0 0 0 1px var(--hair)}
+.seg button{border:0;background:none;color:var(--ink-3);font:500 12.5px var(--f);padding:5px 12px;border-radius:999px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--hair)}
+
+/* one answer first, then three anchors */
+.hero{display:grid;grid-template-columns:minmax(0,1.12fr) repeat(3,minmax(0,.63fr));gap:1px;background:var(--hair);
+  border-radius:16px;overflow:hidden;box-shadow:inset 0 0 0 1px var(--hair);margin-bottom:6px}
+.hero > div{background:var(--surface);padding:18px 20px}
+.hero .verdict{display:flex;flex-direction:column;gap:9px}
+.vd{display:inline-flex;align-items:center;gap:8px;font:500 13px var(--f)}
+.vd i{width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 0 3px rgba(140,203,159,.16)}
+.vd.warn i{background:var(--warn);box-shadow:0 0 0 3px rgba(227,178,92,.16)}
+.vd.bad i{background:var(--bad);box-shadow:0 0 0 3px rgba(229,131,111,.16)}
+.hero .verdict p{margin:0;font:400 13px/1.55 var(--f);color:var(--ink-2);max-width:44ch}
+.hero .verdict p b{font-weight:500;color:var(--ink)}
+.hero .lab{display:block;font:500 10.5px var(--f);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-4);margin-bottom:9px}
+.hero .big{display:block;font:500 25px/1 var(--m);letter-spacing:-.02em}
+.hero .fine{display:block;margin-top:6px;font:400 12px var(--f);color:var(--ink-3)}
+.hero .spark{display:block;margin-top:12px}
+.hero .spark svg{display:block;width:100%;height:auto;overflow:visible}
+
+/* section rules keep a long page navigable */
+.sect{display:flex;align-items:center;gap:14px;margin:26px 2px 12px}
+.sect h3{margin:0;font:500 10.5px var(--f);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4);white-space:nowrap}
+.sect .ln{flex:1;height:1px;background:var(--hair)}
+
+.grid{display:grid;gap:14px;margin-bottom:14px}
+.grid.c2{grid-template-columns:1fr 1fr}
+.card{background:var(--surface);border-radius:16px;box-shadow:inset 0 0 0 1px var(--hair);margin-bottom:14px}
+.grid .card{margin-bottom:0}
+.card-h{display:flex;align-items:flex-start;gap:12px;padding:16px 20px 0}
+.card-h h2{margin:0;font:500 14px var(--f);letter-spacing:-.005em}
+.card-h .sp{flex:1}
+.card-h .meta{font:400 12px var(--f);color:var(--ink-3);white-space:nowrap}
+.read{margin:6px 20px 0;font:400 12.5px/1.55 var(--f);color:var(--ink-2)}
+.read b{font-weight:500;color:var(--ink)}
+.body{padding:12px 20px 18px}
+
+/* chart shell */
+.chart{position:relative}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart text{font:400 11px var(--f);fill:var(--ink-4)}
+.chart .vt{font:500 11.5px var(--m);fill:var(--ink)}
+.gl{stroke:rgba(255,255,255,.055);stroke-width:1}
+.axis{stroke:rgba(255,255,255,.16);stroke-width:1}
+.ref{stroke:var(--ink-3);stroke-width:1;stroke-dasharray:4 4;opacity:.8}
+.ref2{stroke:var(--ink-4);stroke-width:1;stroke-dasharray:2 5}
+.reflab{font:500 11px var(--f);fill:var(--ink-3)}
+.tip{position:absolute;z-index:5;pointer-events:none;opacity:0;transform:translate(-50%,-100%);transition:opacity .12s;
+  padding:8px 10px;border-radius:10px;background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--hair-2),0 14px 30px -12px rgba(0,0,0,.8);white-space:nowrap}
+.tip b{display:block;font:500 12px var(--f);margin-bottom:5px}
+.tip span{display:flex;align-items:center;gap:7px;font:400 11.5px var(--f);color:var(--ink-2)}
+.tip span i{width:8px;height:8px;border-radius:2px;flex:none}
+.tip span em{margin-left:auto;padding-left:16px;font:500 11.5px var(--m);font-style:normal;color:var(--ink)}
+.cross{stroke:rgba(255,255,255,.22);stroke-width:1}
+
+.key{display:flex;flex-wrap:wrap;gap:8px 18px;padding:10px 20px 0;font:400 12px var(--f);color:var(--ink-3)}
+.key span{display:inline-flex;align-items:center;gap:7px}
+.key i{width:9px;height:9px;border-radius:2px;display:inline-block}
+.key i.dash{width:14px;height:0;border-radius:0;border-top:1px dashed var(--ink-3)}
+.key b{color:var(--ink);font:500 12px var(--m)}
+
+/* composition bar */
+.comp{display:flex;gap:2px;height:34px;margin:2px 0 18px}
+.comp i{height:100%;border-radius:3px;transition:filter .15s var(--ease);cursor:default}
+.comp i:first-child{border-radius:9px 3px 3px 9px}
+.comp i:last-child{border-radius:3px 9px 9px 3px}
+.comp i:hover{filter:brightness(1.14)}
+.cl{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--hair);border-radius:12px;overflow:hidden;box-shadow:inset 0 0 0 1px var(--hair)}
+.cl div{background:var(--surface);padding:12px 14px}
+.cl .t{display:flex;align-items:center;gap:8px;font:400 12px var(--f);color:var(--ink-3);margin-bottom:7px}
+.cl i{width:9px;height:9px;border-radius:2px;flex:none}
+.cl b{font:500 16px var(--m);letter-spacing:-.01em}
+.cl small{margin-left:8px;font:400 12px var(--m);color:var(--ink-4)}
+
+/* at-risk list */
+.rl{display:flex;flex-direction:column;padding-top:2px}
+.rl a{display:grid;grid-template-columns:minmax(0,1fr) 96px 46px;align-items:center;gap:12px;padding:10px 0;
+  border-bottom:1px solid var(--hair);text-decoration:none;color:inherit}
+.rl a:last-child{border-bottom:0}
+.rl a:hover .d{color:var(--gold)}
+.rl .d{font:500 12.5px var(--f);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:color .14s var(--ease)}
+.rl .t{height:5px;border-radius:3px;background:rgba(255,255,255,.06);overflow:hidden}
+.rl .t i{display:block;height:100%;border-radius:3px;background:var(--bad)}
+.rl .v{font:500 12px var(--m);color:var(--ink-2);text-align:right}
+.rl-h{display:flex;align-items:baseline;gap:8px;font:500 11px var(--f);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-4);margin-bottom:2px}
+
+/* figures row */
+.figs{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--hair);border-radius:12px;overflow:hidden;
+  box-shadow:inset 0 0 0 1px var(--hair);margin-top:16px}
+.figs > div{background:var(--surface);padding:12px 14px}
+.figs small{display:block;font:400 11.5px var(--f);color:var(--ink-3);margin-bottom:5px}
+.figs b{font:500 16px var(--m);letter-spacing:-.01em}
+.figs .good b{color:var(--good)}.figs .warn b{color:var(--warn)}.figs .bad b{color:var(--bad)}
+
+.note{display:flex;align-items:center;gap:9px;margin:0 20px 16px;padding:10px 12px;border-radius:10px;
+  font:400 12.5px var(--f);color:var(--ink-2);background:var(--field);box-shadow:inset 0 0 0 1px var(--hair)}
+.note i{width:6px;height:6px;border-radius:50%;background:var(--warn);flex:none}
+
+@media (max-width:1000px){.hero{grid-template-columns:1fr 1fr}.grid.c2{grid-template-columns:1fr}.cl{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <h1>Shared pool</h1>
+    <span class="sub">Updated 2 minutes ago</span>
+    <span class="sp"></span>
+    <span class="seg"><button aria-pressed="true">Graphs</button><button aria-pressed="false">Details</button></span>
+  </div>
+
+  <section class="hero">
+    <div class="verdict">
+      <span class="vd warn"><i></i>Watch the shelf</span>
+      <p>Capacity covers today's demand with <b>19% spare</b>. At the current burn the warm shelf runs out in <b>6.2 weeks</b>, so the next batch has to be ordered within 2 weeks.</p>
+    </div>
+    <div>
+      <span class="lab">Capacity today</span>
+      <span class="big">48,200</span>
+      <span class="fine">emails a day · 412 domains</span>
+      <span class="spark" data-spark="41,44,43,47,51,50,55,54,58,62,61,66" data-dir="up"></span>
+    </div>
+    <div>
+      <span class="lab">Free for new customers</span>
+      <span class="big">9,400</span>
+      <span class="fine">19% of capacity · 3 weeks of sales</span>
+      <span class="spark" data-spark="21,20,19,18,17,16,15,14,13,12,11,9.4" data-dir="down"></span>
+    </div>
+    <div>
+      <span class="lab">Warm shelf runway</span>
+      <span class="big" style="color:var(--warn)">6.2 wk</span>
+      <span class="fine">84 warm spares · 13.5 burn a week</span>
+      <span class="spark" data-spark="14,13.4,12.8,11.9,11,10.2,9.4,8.6,7.9,7.2,6.7,6.2" data-dir="down"></span>
+    </div>
+  </section>
+
+  <div class="sect"><h3>Capacity</h3><span class="ln"></span></div>
+
+  <section class="card">
+    <div class="card-h">
+      <h2>Sending against capacity</h2>
+      <span class="sp"></span>
+      <span class="meta">Last 30 days</span>
+    </div>
+    <p class="read">Customers asked for <b>38,800 a day</b> and the pool sent <b>36,140</b>. Demand grew <b>22%</b> this month while capacity grew 8%, so the spare room is shrinking.</p>
+    <div class="key">
+      <span><i style="background:var(--gold)"></i>Sent a day <b>36,140</b></span>
+      <span><i class="dash"></i>Capacity <b>48,200</b></span>
+      <span><i class="dash" style="border-top-style:dotted"></i>Asked for <b>38,800</b></span>
+    </div>
+    <div class="body chart" id="c1">
+      <svg viewBox="0 0 1092 286" id="svg1" role="img" aria-label="Emails sent each day against pool capacity and committed demand, last 30 days"></svg>
+      <div class="tip" id="tip1"></div>
+    </div>
+  </section>
+
+  <div class="sect"><h3>The fleet</h3><span class="ln"></span></div>
+
+  <section class="card">
+    <div class="card-h">
+      <h2>What the pool is made of</h2>
+      <span class="sp"></span>
+      <span class="meta">1,940 mailboxes · 412 domains</span>
+    </div>
+    <p class="read">Four in five mailboxes are earning. <b>186 are burned</b> and now only carry replies, which is 9.6% of the fleet and <b>$284 a month</b> of dead cost.</p>
+    <div class="body">
+      <div class="comp chart" id="comp"></div>
+      <div class="tip" id="tipc"></div>
+      <div class="cl" id="complist"></div>
+    </div>
+  </section>
+
+  <div class="grid c2">
+    <section class="card">
+      <div class="card-h">
+        <h2>Bad email rate</h2>
+        <span class="sp"></span>
+        <span class="meta">Whole pool · 30 days</span>
+      </div>
+      <p class="read">Running at <b>2.4%</b>, under the 3% target. The two spikes both came from the batch bought on 14 Sept.</p>
+      <div class="body chart" id="c2">
+        <svg viewBox="0 0 519 228" id="svg2" role="img" aria-label="Hard bounces and complaints per email sent, last 30 days, against a 3 percent target and a 5 percent danger line"></svg>
+        <div class="tip" id="tip2"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-h">
+        <h2>Domains burned each week</h2>
+        <span class="sp"></span>
+        <span class="meta">12 weeks, then projected</span>
+      </div>
+      <p class="read">Burn averages <b>13.5 a week</b> and is rising. At that rate the warm shelf of 84 empties in <b>6.2 weeks</b>.</p>
+      <div class="body chart" id="c3">
+        <svg viewBox="0 0 519 228" id="svg3" role="img" aria-label="Domains burned per week for twelve weeks with a four week projection"></svg>
+        <div class="tip" id="tip3"></div>
+      </div>
+      <div class="note"><i></i>Order 60 domains now to keep 8 weeks of cover.</div>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="card-h">
+      <h2>Risk across domains</h2>
+      <span class="sp"></span>
+      <span class="meta">412 sending domains</span>
+    </div>
+    <p class="read">Most domains are safe. <b>31 sit above 0.7</b> and are the ones that will burn next if nothing changes.</p>
+    <div class="body">
+      <div class="grid c2" style="margin-bottom:0;align-items:start">
+        <div class="chart" id="c4">
+          <svg viewBox="0 0 539 212" id="svg4" role="img" aria-label="How many domains fall in each risk band from 0 to 1"></svg>
+          <div class="tip" id="tip4"></div>
+        </div>
+        <div>
+          <div class="rl-h"><span>Worst four</span></div>
+          <div class="rl">
+            <a href="#"><span class="d">getnorthwind.com</span><span class="t"><i style="width:94%"></i></span><span class="v">0.94</span></a>
+            <a href="#"><span class="d">trynorthwind.co</span><span class="t"><i style="width:88%"></i></span><span class="v">0.88</span></a>
+            <a href="#"><span class="d">northwindhq.com</span><span class="t"><i style="width:81%"></i></span><span class="v">0.81</span></a>
+            <a href="#"><span class="d">meetloomwork.com</span><span class="t"><i style="width:76%"></i></span><span class="v">0.76</span></a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="sect"><h3>Money</h3><span class="ln"></span></div>
+
+  <section class="card">
+    <div class="card-h">
+      <h2>What the pool costs</h2>
+      <span class="sp"></span>
+      <span class="meta">Last 30 days</span>
+    </div>
+    <p class="read">A sending domain costs <b>$6.40 a month</b> all in and earns <b>$21.80</b>. Spend is inside the cap with <b>$564</b> left.</p>
+    <div class="body">
+      <div class="chart" id="c5"><svg viewBox="0 0 1092 170" id="svg5" role="img" aria-label="Cost and revenue per domain, and spend against the monthly cap"></svg></div>
+      <div class="figs">
+        <div><small>Spend, 30 days</small><b>$2,636</b></div>
+        <div><small>Revenue, 30 days</small><b>$8,982</b></div>
+        <div class="good"><small>Margin</small><b>70.6%</b></div>
+        <div class="warn"><small>Wasted on burned</small><b>$284</b></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+const G = "#D4AE72", BAD = "#E5836F", INK3 = "#857D72", INK4 = "#676056", SURF = "#161513";
+const n0 = n => Math.round(n).toLocaleString("en-US");
+const el = id => document.getElementById(id);
+const NS = "http://www.w3.org/2000/svg";
+const mk = (t, a) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
+
+/* ---------- hero sparklines ---------- */
+document.querySelectorAll("[data-spark]").forEach(host => {
+  const v = host.dataset.spark.split(",").map(Number);
+  const W = 200, H = 26, P = 3;
+  const lo = Math.min(...v), hi = Math.max(...v), sp = hi - lo || 1;
+  const x = i => (i / (v.length - 1)) * W;
+  const y = n => P + (1 - (n - lo) / sp) * (H - P * 2);
+  const svg = mk("svg", { viewBox: `0 0 ${W} ${H}`, "aria-hidden": "true" });
+  const defs = mk("defs", {});
+  const id = "sg" + Math.random().toString(36).slice(2, 7);
+  const g = mk("linearGradient", { id, x1: "0", y1: "0", x2: "0", y2: "1" });
+  g.appendChild(mk("stop", { offset: "0", "stop-color": G, "stop-opacity": ".20" }));
+  g.appendChild(mk("stop", { offset: "1", "stop-color": G, "stop-opacity": "0" }));
+  defs.appendChild(g); svg.appendChild(defs);
+  let d = ""; v.forEach((n, i) => { d += (i ? "L" : "M") + x(i).toFixed(1) + " " + y(n).toFixed(1); });
+  svg.appendChild(mk("path", { d: d + `L${W} ${H}L0 ${H}Z`, fill: `url(#${id})` }));
+  svg.appendChild(mk("path", { d, fill: "none", stroke: G, "stroke-width": "1.6", "stroke-linejoin": "round", "stroke-linecap": "round", opacity: ".85" }));
+  svg.appendChild(mk("circle", { cx: x(v.length - 1), cy: y(v[v.length - 1]), r: "2.6", fill: G, stroke: SURF, "stroke-width": "1.5" }));
+  host.appendChild(svg);
+});
+
+/* ---------- 1. sending against capacity ---------- */
+(function () {
+  const W = 1092, H = 286, L = 54, R = 108, T = 22, B = 38;
+  const cap = 48200, asked = 38800, top = 50000;
+  const sent = [26100,27400,25900,18100,16400,28600,29800,30500,31100,30200,19900,17600,32400,33100,33800,34200,33600,21100,18900,35100,35600,34900,36200,36800,22200,19400,37100,37600,36900,36140];
+  const days = sent.length;
+  const svg = el("svg1"), tip = el("tip1");
+  const x = i => L + (i / (days - 1)) * (W - L - R);
+  const y = v => T + (1 - v / top) * (H - T - B);
+
+  [0, 20000, 40000].forEach(v => {
+    svg.appendChild(mk("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), class: "gl" }));
+    const t = mk("text", { x: L - 10, y: y(v) + 4, "text-anchor": "end" }); t.textContent = v ? (v / 1000) + "k" : "0"; svg.appendChild(t);
+  });
+
+  const defs = mk("defs", {});
+  const grad = mk("linearGradient", { id: "g1", x1: "0", y1: "0", x2: "0", y2: "1" });
+  grad.appendChild(mk("stop", { offset: "0", "stop-color": G, "stop-opacity": ".24" }));
+  grad.appendChild(mk("stop", { offset: "1", "stop-color": G, "stop-opacity": "0" }));
+  defs.appendChild(grad); svg.appendChild(defs);
+
+  let d = "";
+  sent.forEach((v, i) => { d += (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1); });
+  svg.appendChild(mk("path", { d: d + `L${x(days - 1)} ${y(0)}L${x(0)} ${y(0)}Z`, fill: "url(#g1)" }));
+  svg.appendChild(mk("path", { d, fill: "none", stroke: G, "stroke-width": "2", "stroke-linejoin": "round", "stroke-linecap": "round" }));
+
+  /* capacity and demand are reference lines, not a second data colour */
+  svg.appendChild(mk("line", { x1: L, x2: W - R, y1: y(cap), y2: y(cap), class: "ref" }));
+  let lab = mk("text", { x: W - R + 10, y: y(cap) + 4, class: "reflab" }); lab.textContent = "Capacity " + n0(cap); svg.appendChild(lab);
+  svg.appendChild(mk("line", { x1: L, x2: W - R, y1: y(asked), y2: y(asked), class: "ref2" }));
+  lab = mk("text", { x: W - R + 10, y: y(asked) + 4, class: "reflab" }); lab.textContent = "Asked for " + n0(asked); svg.appendChild(lab);
+
+  /* the one gap that decides the page, called out once */
+  svg.appendChild(mk("rect", { x: W - R - 150, y: y(cap), width: 150, height: y(asked) - y(cap), fill: G, opacity: ".08" }));
+  const gapT = mk("text", { x: W - R - 12, y: (y(cap) + y(asked)) / 2 + 4, "text-anchor": "end", class: "vt" }); gapT.textContent = "9,400 free"; svg.appendChild(gapT);
+
+  svg.appendChild(mk("line", { x1: L, x2: W - R, y1: y(0), y2: y(0), class: "axis" }));
+  const last = sent[days - 1];
+  svg.appendChild(mk("circle", { cx: x(days - 1), cy: y(last), r: "4.5", fill: G, stroke: SURF, "stroke-width": "2" }));
+  const lt = mk("text", { x: x(days - 1) - 14, y: y(last) + 21, "text-anchor": "end", class: "vt" }); lt.textContent = n0(last); svg.appendChild(lt);
+
+  [[0, "14 Sept", "start"], [14, "28 Sept", "middle"], [days - 1, "13 Oct", "end"]].forEach(([i, s, a]) => {
+    const t = mk("text", { x: x(i), y: H - 12, "text-anchor": a }); t.textContent = s; svg.appendChild(t);
+  });
+
+  const cr = mk("line", { y1: T, y2: y(0), class: "cross", style: "display:none" }); svg.appendChild(cr);
+  const dot = mk("circle", { r: "4.5", fill: G, stroke: SURF, "stroke-width": "2", style: "display:none" }); svg.appendChild(dot);
+  const hit = mk("rect", { x: L, y: T, width: W - L - R, height: y(0) - T, fill: "transparent" }); svg.appendChild(hit);
+  hit.addEventListener("mousemove", e => {
+    const r = svg.getBoundingClientRect(), sx = W / r.width;
+    const i = Math.max(0, Math.min(days - 1, Math.round(((e.clientX - r.left) * sx - L) / ((W - L - R) / (days - 1)))));
+    cr.setAttribute("x1", x(i)); cr.setAttribute("x2", x(i)); cr.style.display = "";
+    dot.setAttribute("cx", x(i)); dot.setAttribute("cy", y(sent[i])); dot.style.display = "";
+    tip.innerHTML = `<b>Day ${i + 1}</b>
+      <span><i style="background:${G}"></i>Sent<em>${n0(sent[i])}</em></span>
+      <span><i style="background:${INK3}"></i>Capacity<em>${n0(cap)}</em></span>
+      <span><i style="background:${INK4}"></i>Asked for<em>${n0(asked)}</em></span>`;
+    tip.style.opacity = 1;
+    tip.style.left = (x(i) / sx) + "px";
+    tip.style.top = (y(sent[i]) / sx - 14) + "px";
+  });
+  hit.addEventListener("mouseleave", () => { tip.style.opacity = 0; cr.style.display = "none"; dot.style.display = "none"; });
+})();
+
+/* ---------- 2. composition ---------- */
+(function () {
+  const parts = [
+    { l: "Sending", v: 1402, c: "var(--m1)", h: "#F3E2C6", n: "earning now" },
+    { l: "Warming up", v: 248, c: "var(--m2)", h: "#D4AE72", n: "ready in 3 weeks" },
+    { l: "Setting up", v: 64, c: "var(--m3)", h: "#8A6A3C", n: "bought, not warm" },
+    { l: "Burned", v: 186, c: "var(--bad)", h: BAD, n: "replies only" },
+    { l: "Retired", v: 40, c: "var(--ink-4)", h: "#676056", n: "switched off" },
+  ];
+  const total = parts.reduce((a, p) => a + p.v, 0);
+  const bar = el("comp"), tip = el("tipc");
+  bar.innerHTML = parts.map(p => `<i style="flex:${p.v};background:${p.c}"></i>`).join("");
+  el("complist").innerHTML = parts.map(p =>
+    `<div><span class="t"><i style="background:${p.c}"></i>${p.l}</span><b>${n0(p.v)}</b><small>${((p.v / total) * 100).toFixed(1)}%</small></div>`).join("");
+  [...bar.children].forEach((seg, i) => {
+    const p = parts[i];
+    seg.addEventListener("mousemove", e => {
+      const r = bar.getBoundingClientRect();
+      tip.innerHTML = `<b>${p.l} · ${p.n}</b><span><i style="background:${p.h}"></i>Mailboxes<em>${n0(p.v)}</em></span>`;
+      tip.style.opacity = 1; tip.style.left = (e.clientX - r.left) + "px"; tip.style.top = "-4px";
+    });
+    seg.addEventListener("mouseleave", () => (tip.style.opacity = 0));
+  });
+  bar.style.position = "relative";
+})();
+
+/* ---------- 3. bad email rate ---------- */
+(function () {
+  const W = 519, H = 228, L = 38, R = 74, T = 16, B = 32, top = 0.06;
+  const v = [.021,.019,.022,.02,.018,.024,.031,.042,.038,.027,.023,.02,.019,.021,.026,.034,.047,.039,.028,.024,.022,.02,.021,.023,.025,.027,.026,.024,.023,.024];
+  const svg = el("svg2"), tip = el("tip2");
+  const x = i => L + (i / (v.length - 1)) * (W - L - R);
+  const y = n => T + (1 - n / top) * (H - T - B);
+
+  svg.appendChild(mk("rect", { x: L, y: T, width: W - L - R, height: y(.05) - T, fill: BAD, opacity: ".07" }));
+  [0, .02, .04, .06].forEach(t => {
+    svg.appendChild(mk("line", { x1: L, x2: W - R, y1: y(t), y2: y(t), class: "gl" }));
+    const tx = mk("text", { x: L - 9, y: y(t) + 4, "text-anchor": "end" }); tx.textContent = (t * 100).toFixed(0) + "%"; svg.appendChild(tx);
+  });
+  [[.03, "Target 3%", INK3, "ref2"], [.05, "Danger 5%", BAD, "ref"]].forEach(([t, s, c, cls]) => {
+    svg.appendChild(mk("line", { x1: L, x2: W - R, y1: y(t), y2: y(t), class: cls, stroke: c, opacity: ".8" }));
+    const tx = mk("text", { x: W - R + 9, y: y(t) + 4, class: "reflab", fill: c }); tx.textContent = s; svg.appendChild(tx);
+  });
+
+  let d = "";
+  v.forEach((n, i) => { d += (i ? "L" : "M") + x(i).toFixed(1) + " " + y(n).toFixed(1); });
+  svg.appendChild(mk("path", { d, fill: "none", stroke: G, "stroke-width": "2", "stroke-linejoin": "round", "stroke-linecap": "round" }));
+  svg.appendChild(mk("line", { x1: L, x2: W - R, y1: y(0), y2: y(0), class: "axis" }));
+  const last = v[v.length - 1];
+  svg.appendChild(mk("circle", { cx: x(v.length - 1), cy: y(last), r: "4.5", fill: G, stroke: SURF, "stroke-width": "2" }));
+  const lt = mk("text", { x: x(v.length - 1) - 9, y: y(last) + 19, "text-anchor": "end", class: "vt" }); lt.textContent = (last * 100).toFixed(1) + "%"; svg.appendChild(lt);
+  [[0, "14 Sept", "start"], [v.length - 1, "13 Oct", "end"]].forEach(([i, s, a]) => { const t = mk("text", { x: x(i), y: H - 11, "text-anchor": a }); t.textContent = s; svg.appendChild(t); });
+
+  const cr = mk("line", { y1: T, y2: y(0), class: "cross", style: "display:none" }); svg.appendChild(cr);
+  const dot = mk("circle", { r: "4.5", fill: G, stroke: SURF, "stroke-width": "2", style: "display:none" }); svg.appendChild(dot);
+  const hit = mk("rect", { x: L, y: T, width: W - L - R, height: y(0) - T, fill: "transparent" }); svg.appendChild(hit);
+  hit.addEventListener("mousemove", e => {
+    const r = svg.getBoundingClientRect(), sx = W / r.width;
+    const i = Math.max(0, Math.min(v.length - 1, Math.round(((e.clientX - r.left) * sx - L) / ((W - L - R) / (v.length - 1)))));
+    cr.setAttribute("x1", x(i)); cr.setAttribute("x2", x(i)); cr.style.display = "";
+    dot.setAttribute("cx", x(i)); dot.setAttribute("cy", y(v[i])); dot.style.display = "";
+    tip.innerHTML = `<b>Day ${i + 1}</b><span><i style="background:${G}"></i>Bad email rate<em>${(v[i] * 100).toFixed(2)}%</em></span><span><i style="background:${INK3}"></i>Target<em>3.00%</em></span>`;
+    tip.style.opacity = 1; tip.style.left = (x(i) / sx) + "px"; tip.style.top = (y(v[i]) / sx - 12) + "px";
+  });
+  hit.addEventListener("mouseleave", () => { tip.style.opacity = 0; cr.style.display = "none"; dot.style.display = "none"; });
+})();
+
+/* ---------- 4. burn per week + projection ---------- */
+(function () {
+  const W = 519, H = 228, L = 32, R = 14, T = 28, B = 40;
+  const past = [6,8,7,11,9,12,10,14,13,15,12,16];
+  const proj = [14,14,15,15];
+  const all = past.concat(proj), top = 20;
+  const svg = el("svg3"), tip = el("tip3");
+  const band = (W - L - R) / all.length;
+  const bw = Math.min(17, band - 7);
+  const x = i => L + i * band + (band - bw) / 2;
+  const y = v => T + (1 - v / top) * (H - T - B);
+
+  [0, 10, 20].forEach(v => {
+    svg.appendChild(mk("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), class: "gl" }));
+    const t = mk("text", { x: L - 8, y: y(v) + 4, "text-anchor": "end" }); t.textContent = v; svg.appendChild(t);
+  });
+  svg.appendChild(mk("rect", { x: x(past.length) - 6, y: T - 16, width: W - R - x(past.length) + 6, height: y(0) - T + 16, fill: "#fff", opacity: ".025", rx: 6 }));
+  const pl = mk("text", { x: x(past.length) + 1, y: T - 5, class: "reflab" }); pl.textContent = "Projected"; svg.appendChild(pl);
+  const al = mk("text", { x: L + 2, y: y(13.5) - 7, class: "reflab" }); al.textContent = "Average 13.5 a week"; svg.appendChild(al);
+
+  all.forEach((v, i) => {
+    const p = i >= past.length;
+    const r = mk("rect", { x: x(i), y: y(v), width: bw, height: y(0) - y(v), rx: 4, ry: 4, fill: p ? "none" : G, stroke: p ? G : "none", "stroke-width": p ? "1.5" : "0", "stroke-dasharray": p ? "3 3" : "0", opacity: p ? ".7" : "1" });
+    svg.appendChild(r);
+    if (!p) svg.appendChild(mk("rect", { x: x(i), y: y(0) - 4, width: bw, height: 4, fill: G }));
+    r.addEventListener("mousemove", () => {
+      const b = svg.getBoundingClientRect(), sx = W / b.width;
+      tip.innerHTML = `<b>${p ? "Projected" : "Week of"} ${p ? "week +" + (i - past.length + 1) : (past.length - i) + " weeks ago"}</b><span><i style="background:${G}"></i>Domains burned<em>${v}</em></span>`;
+      tip.style.opacity = 1; tip.style.left = ((x(i) + bw / 2) / sx) + "px"; tip.style.top = (y(v) / sx - 10) + "px";
+    });
+    r.addEventListener("mouseleave", () => (tip.style.opacity = 0));
+  });
+
+  svg.appendChild(mk("line", { x1: L, x2: W - R, y1: y(13.5), y2: y(13.5), class: "ref" }));
+  svg.appendChild(mk("line", { x1: L, x2: W - R, y1: y(0), y2: y(0), class: "axis" }));
+  [[0, "12 weeks ago", "start"], [past.length - 1, "This week", "middle"], [all.length - 1, "+4", "end"]].forEach(([i, s, a]) => {
+    const t = mk("text", { x: x(i) + bw / 2, y: H - 14, "text-anchor": a }); t.textContent = s; svg.appendChild(t);
+  });
+})();
+
+/* ---------- 5. risk spread ---------- */
+(function () {
+  const W = 539, H = 212, L = 32, R = 14, T = 26, B = 40;
+  const bins = [94,78,61,52,41,33,22,16,9,6];
+  const top = 100, svg = el("svg4"), tip = el("tip4");
+  const band = (W - L - R) / bins.length, bw = Math.min(26, band - 9);
+  const x = i => L + i * band + (band - bw) / 2;
+  const y = v => T + (1 - v / top) * (H - T - B);
+
+  svg.appendChild(mk("rect", { x: x(7) - 6, y: T - 16, width: W - R - x(7) + 6, height: y(0) - T + 16, fill: BAD, opacity: ".08", rx: 6 }));
+  const dz = mk("text", { x: W - R - 2, y: T - 5, "text-anchor": "end", class: "reflab", fill: BAD }); dz.textContent = "31 will burn next"; svg.appendChild(dz);
+  [0, 50, 100].forEach(v => {
+    svg.appendChild(mk("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), class: "gl" }));
+    const t = mk("text", { x: L - 8, y: y(v) + 4, "text-anchor": "end" }); t.textContent = v; svg.appendChild(t);
+  });
+  bins.forEach((v, i) => {
+    const danger = i >= 7, c = danger ? BAD : G;
+    const r = mk("rect", { x: x(i), y: y(v), width: bw, height: y(0) - y(v), rx: 4, ry: 4, fill: c });
+    svg.appendChild(r);
+    svg.appendChild(mk("rect", { x: x(i), y: y(0) - 4, width: bw, height: 4, fill: c }));
+    r.addEventListener("mousemove", () => {
+      const b = svg.getBoundingClientRect(), sx = W / b.width;
+      tip.innerHTML = `<b>Risk ${(i / 10).toFixed(1)} to ${((i + 1) / 10).toFixed(1)}</b><span><i style="background:${c}"></i>Domains<em>${v}</em></span>`;
+      tip.style.opacity = 1; tip.style.left = ((x(i) + bw / 2) / sx) + "px"; tip.style.top = (y(v) / sx - 10) + "px";
+    });
+    r.addEventListener("mouseleave", () => (tip.style.opacity = 0));
+  });
+  svg.appendChild(mk("line", { x1: L, x2: W - R, y1: y(0), y2: y(0), class: "axis" }));
+  [[0, "0 · safe", "start"], [4, "0.5", "middle"], [9, "1 · burning", "end"]].forEach(([i, s, a]) => {
+    const t = mk("text", { x: x(i) + bw / 2, y: H - 14, "text-anchor": a }); t.textContent = s; svg.appendChild(t);
+  });
+})();
+
+/* ---------- 6. cost and revenue, as bullets ---------- */
+(function () {
+  const W = 1092, H = 170, L = 168, R = 128, svg = el("svg5");
+  const rows = [
+    { l: "Cost a domain", v: 6.4, max: 25, mark: 8, markL: "budget $8", fmt: v => "$" + v.toFixed(2) },
+    { l: "Revenue a domain", v: 21.8, max: 25, mark: 18, markL: "target $18", fmt: v => "$" + v.toFixed(2) },
+    { l: "Spend this month", v: 2636, max: 4000, mark: 3200, markL: "cap $3,200", fmt: v => "$" + n0(v) },
+  ];
+  rows.forEach((r, i) => {
+    const y = 24 + i * 50, h = 16;
+    const t = mk("text", { x: L - 16, y: y + 12, "text-anchor": "end", fill: "#B9B1A5" }); t.textContent = r.l; svg.appendChild(t);
+    svg.appendChild(mk("rect", { x: L, y, width: W - L - R, height: h, rx: 8, ry: 8, fill: "rgba(255,255,255,.05)" }));
+    svg.appendChild(mk("rect", { x: L, y, width: ((W - L - R) * r.v) / r.max, height: h, rx: 8, ry: 8, fill: G }));
+    const mx = L + ((W - L - R) * r.mark) / r.max;
+    svg.appendChild(mk("line", { x1: mx, x2: mx, y1: y - 6, y2: y + h + 6, stroke: "#F2EEE7", "stroke-width": "2", opacity: ".85" }));
+    const ml = mk("text", { x: mx, y: y + h + 20, "text-anchor": "middle", class: "reflab" }); ml.textContent = r.markL; svg.appendChild(ml);
+    const vl = mk("text", { x: W - R + 14, y: y + 12, class: "vt" }); vl.textContent = r.fmt(r.v); svg.appendChild(vl);
+  });
+})();
+</script>
+</body>
+</html>

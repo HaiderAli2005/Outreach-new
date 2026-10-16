@@ -1,0 +1,52 @@
+/* Launch step: one column, one action, and a plain answer to "what happens next". */
+
+.lp-stack{display:flex;flex-direction:column;gap:14px;margin:18px 0 32px;max-width:860px}
+.lp-stack .pv-card{margin-top:0;padding:20px 22px}
+.lp-stack .pv-h{margin-bottom:14px}
+
+.lp-camp .lp-stats{margin-top:2px}
+.lp-stats small{font:500 10.5px var(--f-body);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-4)}
+.lp-stats b{margin-top:8px;font:500 24px/1.1 var(--f-mono);letter-spacing:-.02em}
+.lp-stats span{margin-top:5px}
+
+.lp-next li{grid-template-columns:22px minmax(0,1fr) auto;align-items:center;padding:12px 0}
+.lp-next-t{display:grid;gap:2px;min-width:0}
+.lp-next-t b{font:500 13.5px var(--f-body);color:var(--ink)}
+.lp-next-t small{font:400 12.5px/1.45 var(--f-body);color:var(--ink-3)}
+.lp-next li.wait .lp-next-t b{color:var(--ink-2)}
+.lp-next li > span:last-child{align-self:center;font:500 11.5px var(--f-mono);letter-spacing:.02em;color:var(--ink-4);text-align:right;white-space:nowrap}
+.lp-next li.done > span:last-child{color:var(--good)}
+.lp-next li.run > span:last-child{color:var(--gold)}
+
+.lp-csv .pv-h{margin-bottom:12px}
+.lp-drop{flex-direction:row;align-items:center;gap:14px;padding:14px 16px;text-align:left}
+.lp-drop svg{width:18px;height:18px;color:var(--ink-3)}
+.lp-drop:hover svg,.lp-drop.over svg{color:var(--gold)}
+.lp-drop-t{display:grid;gap:2px;flex:1;min-width:0}
+.lp-drop-t b{font:500 13.5px var(--f-body)}
+.lp-drop-t small{font:400 12.5px var(--f-body);color:var(--ink-3)}
+.lp-drop .btn{pointer-events:none}
+
+.lp-foot{display:flex;flex-direction:column;align-items:center;gap:10px;padding:6px 0 0}
+.lp-foot .btn-primary{height:44px;padding:0 24px;font-size:14px}
+.lp-back{margin:0;text-align:center;font:400 12.5px var(--f-body);color:var(--ink-3)}
+
+/* Rail: the step headings read as labels, not as code. */
+.rc-gh-t{font:500 10.5px var(--f-body)!important;letter-spacing:.09em!important;text-transform:uppercase;color:var(--ink-4)!important}
+.rc-step.done .rc-gh-t{color:var(--ink-3)!important}
+.rc-t{font:500 13px var(--f-body)}
+.rc-d{font:400 12.5px/1.45 var(--f-body)}
+
+@media (max-width:760px){
+  .lp-stack{margin:14px 0 24px}
+  .lp-stack .pv-card{padding:16px 16px}
+  .lp-drop{flex-direction:column;align-items:flex-start}
+  .lp-next li{grid-template-columns:22px minmax(0,1fr);row-gap:4px}
+  .lp-next li > span:last-child{grid-column:2;text-align:left}
+  .lp-foot .btn-primary{width:100%}
+}
+
+/* the finishing action sits in the header, beside Save and exit */
+.vb-cta{margin-left:10px}
+.vb-cta .btn{height:38px;padding:0 18px;font-size:13.5px}
+@media (max-width:760px){.vb-cta .btn{height:34px;padding:0 14px;font-size:13px}}

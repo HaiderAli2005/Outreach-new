@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shared Pool Guide</title>
+<style>
+:root{--bg:#f7f5f1;--panel:#ffffff;--ink:#1f1b16;--ink-2:#4a443c;--ink-3:#7a7268;--line:#e6e0d6;--gold:#9a6f2e;--gold-bg:#fbf3e4;--warn-bg:#fdecea;--warn:#a1392b;--code:#f1ece3}
+@media (prefers-color-scheme:dark){:root{--bg:#121110;--panel:#1a1917;--ink:#f3f0eb;--ink-2:#d9d5cf;--ink-3:#a8a29a;--line:#2e2b27;--gold:#e6c184;--gold-bg:#231d14;--warn-bg:#2a1714;--warn:#ff9a85;--code:#24211d}}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{display:grid;grid-template-columns:250px minmax(0,1fr);gap:40px;max-width:1180px;margin:0 auto;padding:40px 24px 80px}
+nav{position:sticky;top:24px;align-self:start;max-height:calc(100vh - 48px);overflow:auto;padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+nav b{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px}
+nav a{display:block;padding:6px 8px;border-radius:8px;color:var(--ink-2);text-decoration:none;font-size:14px;line-height:1.35}
+nav a:hover{background:var(--gold-bg);color:var(--ink)}
+main{min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:40px 48px}
+h1{margin:0 0 8px;font-size:34px;line-height:1.2;letter-spacing:-.02em}
+h2{margin:44px 0 12px;padding-top:8px;font-size:24px;letter-spacing:-.015em;scroll-margin-top:20px}
+h3{margin:30px 0 8px;font-size:19px;scroll-margin-top:20px}
+h4{margin:22px 0 6px;font-size:16px}
+p{margin:10px 0;color:var(--ink-2)}
+strong{color:var(--ink)}
+hr{border:0;border-top:1px solid var(--line);margin:36px 0}
+ul,ol{margin:10px 0;padding-left:22px;color:var(--ink-2)}
+li{margin:6px 0}
+li p{margin:4px 0}
+code{font:14px ui-monospace,Consolas,monospace;background:var(--code);padding:1px 6px;border-radius:5px}
+.tbl{overflow-x:auto;margin:14px 0;border:1px solid var(--line);border-radius:12px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th{text-align:left;font-size:13px;letter-spacing:.02em;color:var(--ink-3);background:var(--code);padding:10px 14px;font-weight:600}
+td{padding:10px 14px;border-top:1px solid var(--line);vertical-align:top;color:var(--ink-2)}
+td:first-child{color:var(--ink);font-weight:500;white-space:nowrap}
+blockquote{margin:14px 0;padding:12px 16px;border-radius:12px;border-left:4px solid var(--gold);background:var(--gold-bg)}
+blockquote p{margin:4px 0;color:var(--ink)}
+blockquote.warn{border-left-color:var(--warn);background:var(--warn-bg)}
+@media (max-width:900px){.wrap{grid-template-columns:1fr;padding:16px}nav{position:static;max-height:none}main{padding:24px 18px}td:first-child{white-space:normal}h1{font-size:28px}}
+@media print{nav{display:none}.wrap{display:block}main{border:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav aria-label="Contents"><b>Contents</b><a href="#1-what-the-shared-pool-is">1. What the shared pool is</a><a href="#2-the-top-of-the-page">2. The top of the page</a><a href="#3-alert-cards-only-when-needed">3. Alert cards (only when needed)</a><a href="#4-charts-view-the-default">4. Charts view (the default)</a><a href="#5-numbers-view">5. Numbers view</a><a href="#6-always-at-the-bottom-both-views-what-you-act-on">6. Always at the bottom (both views): what you act on</a><a href="#7-quick-glossary">7. Quick glossary</a></nav>
+<main>
+<h1>The shared sending pool: a plain guide</h1>
+<p>This guide explains every part of <strong>Admin → Sending pool</strong>: what each number means, where it comes from, and what to do about it. Every example uses the same small made-up pool, described in section 1, so the numbers connect from one section to the next.</p>
+<hr>
+<h2 id="1-what-the-shared-pool-is">1. What the shared pool is</h2>
+<p>Aperture owns its own email domains and mailboxes. <strong>Every customer sends from them, mixed together.</strong> Customers never bring their own domains. This page is where you look after that pool.</p>
+<h3 id="the-life-of-a-domain">The life of a domain</h3>
+<div class="tbl"><table><thead><tr><th>Stage</th><th>How long</th><th>What it sends</th></tr></thead><tbody><tr><td><strong>Aging</strong></td><td>30 days</td><td>Nothing. A brand-new domain that sends straight away looks like spam.</td></tr><tr><td><strong>Warming up</strong></td><td>29 days</td><td>Each mailbox ramps up: <strong>5</strong> a day (days 1–7), <strong>10</strong> (days 8–14), <strong>20</strong> (days 15–21), <strong>30</strong> (day 22 on).</td></tr><tr><td><strong>Active</strong></td><td>as long as it stays healthy</td><td><strong>30</strong> a day per mailbox. A domain has up to 3 mailboxes, so at most <strong>90</strong> a day per domain.</td></tr><tr><td><strong>Burned</strong></td><td>until retired</td><td>No new cold email. It only keeps answering conversations it already has.</td></tr><tr><td><strong>Retired</strong></td><td>—</td><td>Switched off.</td></tr></tbody></table></div>
+<p>From buying a domain to full volume takes about <strong>9 weeks</strong> (30 + 29 days, plus a little margin). That delay is why the page is always thinking ahead about <strong>spare domains</strong>.</p>
+<h3 id="when-does-a-domain-burn">When does a domain burn?</h3>
+<p>A domain burns when its <strong>bad rate</strong> goes over <strong>5%</strong> on its <strong>last 200 emails</strong> (a single mailbox: its last 50).</p>
+<p><strong>Bad rate</strong> = (hard bounces + complaints × 10) ÷ emails sent. A complaint counts <strong>ten times</strong> because a "this is spam" click hurts a domain far more than a dead address.</p>
+<blockquote class="ex"><p><strong>Example.</strong> Out of a domain's last 200 emails, 6 bounced and 1 person marked it as spam.<br>Bad = 6 + (1 × 10) = 16. Bad rate = 16 ÷ 200 = <strong>8%</strong>, which is over 5%, so <strong>the domain burns</strong>.<br>With the same 6 bounces and no complaint: 6 ÷ 200 = <strong>3%</strong>, so it keeps sending.</p></blockquote>
+<h3 id="our-example-pool-used-in-every-example-below">Our example pool (used in every example below)</h3>
+<ul><li><strong>10 active domains</strong>, 3 mailboxes each.</li><li><strong>2 warming domains</strong> on warmup day 10, 3 mailboxes each.</li><li><strong>4 spare domains</strong> in total (aging + warming).</li><li><strong>Customer A</strong> has a daily budget of <strong>$20</strong>, and <strong>Customer B</strong> has <strong>$8</strong>.</li><li>Each email costs the customer <strong>$0.04</strong>.</li></ul>
+<hr>
+<h2 id="2-the-top-of-the-page">2. The top of the page</h2>
+<div class="tbl"><table><thead><tr><th>Control</th><th>What it does</th></tr></thead><tbody><tr><td><strong>Charts / Numbers</strong></td><td>Two ways to show the same figures: as charts, or as plain tables. The action tables at the bottom (section 6) show in both.</td></tr><tr><td><strong>Recalculate</strong></td><td>Figures recalculate by themselves every 15 minutes. Press this to recalculate right now, for example just after adding domains.</td></tr><tr><td><strong>"Figures from 3m ago"</strong></td><td>How old the figures on screen are.</td></tr></tbody></table></div>
+<hr>
+<h2 id="3-alert-cards-only-when-needed">3. Alert cards (only when needed)</h2>
+<h3 id="restock-add-n-domains">"Restock: add N domains"</h3>
+<p>The daily check decided you need more domains. The card says:</p>
+<ul><li>why;</li><li>how long your spare domains last at the current burn rate, or that nothing has burned yet;</li><li>some neutral domain names you could buy.</li></ul>
+<p><strong>What to do:</strong> buy the domains yourself, 3–5 at a time, from more than one registrar, then add them on the <strong>Domains</strong> page.</p>
+<ul><li><strong>I'll add them:</strong> marks the request as accepted. It closes by itself once the domains are added.</li><li><strong>Dismiss:</strong> closes it without doing anything.</li><li><strong>Note:</strong> optional. It's saved in the log.</li></ul>
+<blockquote class="ex"><p>Nothing is ever bought automatically.</p></blockquote>
+<h3 id="example-com-is-paused">"example.com is paused"</h3>
+<p>That domain failed its own authentication check: SPF, DKIM or DMARC. This is a setup problem on <strong>our</strong> side, not a customer's bad list. Nobody new is sent from it, but existing conversations carry on.</p>
+<p><strong>What to do:</strong> fix the DNS records, write what you fixed (at least 5 characters, logged), and press <strong>Resume sending</strong>.</p>
+<hr>
+<h2 id="4-charts-view-the-default">4. Charts view (the default)</h2>
+<h3 id="4-1-the-headline-card">4.1 The headline card</h3>
+<p>The big headline names <strong>the single most important problem</strong>, picked in this order:</p>
+<ol><li>Nothing can send</li><li>Out of capacity</li><li>Buy domains today</li><li>Domains in the at-risk band</li><li>Bad-email rate is high</li><li>Capacity is tight</li></ol>
+<p>If none of these apply, it says <strong>"The pool is healthy"</strong>. If there are more problems, it adds "N other things to watch below".</p>
+<p>The four cards under it:</p>
+<div class="tbl"><table><thead><tr><th>Card</th><th>Meaning</th><th>Example</th></tr></thead><tbody><tr><td><strong>Daily capacity</strong></td><td>How many emails the whole pool can send today: every mailbox's limit for today added up, at most 90 per domain.</td><td>10 active domains × 90 = 900, plus 2 warming domains × (3 mailboxes × 10) = 60. <strong>960 a day.</strong></td></tr><tr><td><strong>Free for new customers</strong> (or <strong>Short by</strong>)</td><td>Capacity minus what customers asked for. "Room for N more $20-a-day customers" = free ÷ 500. If customers asked for more than the pool can send, it turns red and shows how much you're short.</td><td>A asks $20 ÷ $0.04 = 500 emails, B asks $8 ÷ $0.04 = 200, so 700 together. Free = 960 − 700 = <strong>260</strong>. Room for 260 ÷ 500 = <strong>0 more</strong> $20 customers.</td></tr><tr><td><strong>Burned mailboxes</strong></td><td>How many mailboxes are burned, what share that is, and about how much daily capacity was lost. Each mailbox counts at the limit it had when it burned.</td><td>A mailbox that burned on warmup day 3 was sending 5 a day, so it counts as <strong>5 lost</strong>, not 30.</td></tr><tr><td><strong>Live conversations on burned</strong></td><td>People who replied in the last 30 days and are tied to a burned mailbox, plus follow-ups still going and how many customers that affects. Those conversations cannot move to another mailbox.</td><td>7 live conversations, 12 follow-ups, 4 customers.</td></tr></tbody></table></div>
+<h3 id="4-2-capacity">4.2 Capacity</h3>
+<p><strong>Today panel</strong></p>
+<ul><li><strong>Can send:</strong> today's capacity (960 in our example).</li><li><strong>Customers asked for:</strong> the daily budgets of launched customers with Autopilot on, turned into emails (700).</li><li><strong>Sent so far today.</strong></li><li><strong>Free</strong> (or <strong>Short</strong>).</li><li><strong>The bar:</strong> customers in gold, free capacity in green, with a marker at what's been sent today.</li><li><strong>Internal outreach:</strong> your own outreach only uses capacity no customer needs, and gives it back as soon as a customer does. It never reduces "Free".</li><li><strong>One domain sends at most 90 a day:</strong> so capacity only grows when new domains go live.</li></ul>
+<p><strong>Last 30 days chart</strong></p>
+<ul><li><strong>Gold area:</strong> what was sent each day.</li><li><strong>Dashed line:</strong> what the pool could send.</li><li><strong>Dotted line:</strong> what customers asked for.</li></ul>
+<p>The gap between the two lines is room for new customers.</p>
+<h3 id="4-3-burned">4.3 Burned</h3>
+<p><strong>What the pool is made of:</strong> every mailbox by state: Sending, Warming up, Setting up (bought but not connected yet), Burned (replies only), Retired.</p>
+<p><strong>What burned mailboxes still carry</strong></p>
+<ul><li><strong>Capacity lost, a day.</strong></li><li><strong>We still pay a month:</strong> burned mailboxes × their monthly price, plus burned domains × yearly price ÷ 12.<blockquote class="ex"><p>3 burned mailboxes × $3 + 1 domain × $15 ÷ 12 = $9 + $1.25 = <strong>$10.25 a month</strong>.</p></blockquote></li><li><strong>Live conversations, follow-ups still going, customers affected, burned domains.</strong></li></ul>
+<p><strong>Why they burned (last 30 days)</strong></p>
+<ul><li><strong>Too many bad emails:</strong> over 5%.</li><li><strong>DKIM record lost:</strong> its signing record disappeared from DNS.</li><li><strong>Failed the seed test:</strong> our own test inbox couldn't confirm its signature.</li><li><strong>Other.</strong></li></ul>
+<p>Below it, <strong>Domains by stage</strong> counts how many domains are aging, warming, active, burned and retired.</p>
+<p><strong>Domains burned per week</strong></p>
+<ul><li><strong>Burn rate, 30 days:</strong> domains burned ÷ every domain that was sending in that period (still active + burned).<blockquote class="ex"><p>2 burned and 10 still active: 2 ÷ 12 = <strong>16.7%</strong>.</p></blockquote></li><li><strong>Burned this week</strong> and <strong>Burned in 30 days.</strong></li><li><strong>Average a week:</strong> a running average where recent weeks count more.</li><li><strong>The bars:</strong> burned per week, with the average as a line and a dashed "next week" forecast. The forecast is simply the current average.</li><li><strong>"Expected in the next 30 days":</strong> domains in the at-risk band now, plus the weekly average for the rest.<blockquote class="ex"><p>1 domain at risk, average 0.5 a week, 9 others out of 10: 1 + 0.5 × 4.3 weeks × 9/10 ≈ <strong>3 domains</strong>.</p></blockquote></li></ul>
+<h3 id="4-4-health">4.4 Health</h3>
+<p><strong>Bad emails, whole pool:</strong> today, last 7 days and last 30 days, weighted like the burn rule (complaint = 10 bounces). The chart has two lines:</p>
+<ul><li><strong>3% warmup holds:</strong> warming mailboxes stop moving up the ramp until they're cleaner.</li><li><strong>5% a domain burns:</strong> the rate at which a single domain burns.</li></ul>
+<blockquote class="warn"><p>⚠️ Each domain is judged on <strong>its own</strong> last 200 emails. The pool average can be 1% while one domain is at 8% and burns.</p></blockquote>
+<p><strong>Risk by domain:</strong> a score from <strong>0 (safe) to 1</strong>. It ranks what to look at first. It is <strong>not</strong> a forecast and does not say "burns in a week".</p>
+<p>How it's built:</p>
+<ul><li><strong>50%:</strong> this week's bad rate (full marks at 5%);</li><li><strong>30%:</strong> how fast it's rising compared with the last 30 days (full marks at +2 points);</li><li><strong>20%:</strong> complaints (full marks at 0.3%).</li></ul>
+<blockquote class="ex"><p><strong>Example.</strong> This week 2.5% bad, up 1 point on the month, 0.15% complaints.<br>0.5 × (2.5 ÷ 5) + 0.3 × (1 ÷ 2) + 0.2 × (0.15 ÷ 0.3) = 0.25 + 0.15 + 0.10 = <strong>0.50</strong>, which is in the <strong>watch</strong> band.</p></blockquote>
+<ul><li><strong>Watch:</strong> 0.4 to 0.7.</li><li><strong>At risk:</strong> 0.7 or more.</li><li>Domains with fewer than 200 emails in 30 days are not scored yet.</li></ul>
+<h3 id="4-5-spare-domains-and-restock">4.5 Spare domains and restock</h3>
+<p><strong>Spare domains</strong> = domains already bought that aren't sending at full volume yet (aging + warming up).</p>
+<p>The <strong>Restock panel</strong> has two halves.</p>
+<p><strong>Left half: your spares</strong></p>
+<ul><li>The count against your minimum, with a bar.</li><li>How many are aging, how many are warming, and how many go live this week.</li><li><strong>Stuck:</strong> a domain whose slowest mailbox is 3 or more days behind its warmup schedule, or that hasn't been checked for 3 days.<blockquote class="ex"><p>It started warming 12 days ago, so it should be on day 12, but it's on day 8. That's 4 days behind, so it's <strong>stuck</strong>. Look at it.</p></blockquote></li></ul>
+<p><strong>Right half: "Today"</strong> shows <strong>Buy N domains</strong> or <strong>Nothing to buy</strong>, plus when domains bought today would start warming and reach full volume. It checks three reasons and buys for the <strong>biggest</strong> one, never more than "Most domains per restock":</p>
+<div class="tbl"><table><thead><tr><th>Reason</th><th>Rule</th><th>Example</th></tr></thead><tbody><tr><td><strong>Below the minimum</strong></td><td>You have fewer spares than your target.</td><td>Minimum 15, you have 4: need <strong>11</strong>.</td></tr><tr><td><strong>To replace burn</strong></td><td>At the current burn, the spares run out before a new domain could be ready (~9 weeks). Doesn't apply if nothing has burned.</td><td>4 spares at 0.5 burned a week last 8 weeks. That's less than 9, so buy (9 − 8) × 0.5, rounded up: <strong>1</strong>.</td></tr><tr><td><strong>For demand</strong></td><td>Customers want more than the pool can send, times your demand margin.</td><td>Margin 1.2: 700 × 1.2 = 840 needed. With 960 capacity that's fine. With only 600, you're 240 short; 240 ÷ 30 = 8 mailboxes = 3 domains, so <strong>3</strong>.</td></tr></tbody></table></div>
+<blockquote class="ex"><p>The biggest need is 11, but "Most domains per restock" is 5, so the answer is <strong>Buy 5</strong>. The rest comes in the next request.</p></blockquote>
+<p><strong>Next 12 weeks chart</strong></p>
+<ul><li><strong>Green:</strong> spares going live.</li><li><strong>Red:</strong> domains expected to burn.</li></ul>
+<p>If the red line goes above the green, the pool starts shrinking from that week. A gold marker shows when a domain bought today would go live.</p>
+<p><strong>Stages:</strong> the ladder from aging to active, with how many domains sit on each step.</p>
+<p><strong>Every spare domain:</strong> one timeline bar per domain, from bought to live, with its warmup day and days remaining. Stuck ones are flagged.</p>
+<h3 id="4-6-cost-per-email-internal-only-never-shown-to-customers">4.6 Cost per email (internal only, never shown to customers)</h3>
+<p>The headline gives what one email costs you, against the <strong>$0.04</strong> you charge, and the gross margin.</p>
+<p><strong>Where each $0.04 goes</strong> (last 30 days, per email and per month):</p>
+<div class="tbl"><table><thead><tr><th>Cost</th><th>How it's worked out</th></tr></thead><tbody><tr><td><strong>Infrastructure</strong></td><td>Mailboxes × monthly price + burned mailboxes × their price + domains × yearly price ÷ 12.</td></tr><tr><td><strong>AI</strong></td><td>Priced from the tokens each AI call actually used.</td></tr><tr><td><strong>Data</strong></td><td>Apollo: people revealed and searches.</td></tr><tr><td><strong>Verification</strong></td><td>MillionVerifier address checks.</td></tr><tr><td><strong>Card fees</strong></td><td>Stripe fees on customer top-ups.</td></tr></tbody></table></div>
+<blockquote class="ex"><p><strong>Example.</strong> 36 sending mailboxes × $4 = $144, plus 3 burned × $3 = $9, plus 13 domains × $15 ÷ 12 = $16.25. Infrastructure = <strong>$169.25 a month</strong>.<br>If the pool sent 12,500 emails: $169.25 ÷ 12,500 = <strong>$0.0135 per email</strong> for infrastructure.</p></blockquote>
+<p>Cost per email = all costs ÷ all emails sent. That includes your own internal outreach, which pays nothing.</p>
+<p><strong>AI by job:</strong> calls, average tokens and cost per call for each job: writing a person's 4 emails, fact-checking an email, reading a reply and drafting an answer, website analysis, sample emails.</p>
+<blockquote class="ex"><p>If it says "N counted AI calls have no token record": those calls aren't in the AI cost. They were made before tokens were recorded, or they failed before the AI reported its tokens.</p></blockquote>
+<p><strong>Unit prices (editable):</strong> every figure above is calculated from these, so update them whenever an invoice changes:</p>
+<ul><li>Apollo per person and per search;</li><li>MillionVerifier per address;</li><li>card fee (%) and card fee per payment;</li><li><strong>Mailbox per month</strong>, <strong>Burned mailbox per month until retired</strong>, <strong>Domain per year</strong>;</li><li><strong>AI models:</strong> price per million input, cached input and output tokens. "Any other model" is used for models not listed. <strong>Add a model</strong> adds a new row.</li></ul>
+<p><strong>Per domain:</strong> each domain's emails a day (last 7 days), infrastructure per month, per email, all-in per email, and margin per email.</p>
+<blockquote class="ex"><p>A warming domain with 3 mailboxes costs 3 × $4 + $15 ÷ 12 = $13.25 a month. Sending 5 a day: $13.25 ÷ 30 days ÷ 5 = <strong>$0.088 per email</strong>, more than the $0.04 charged. That <strong>loss is normal</strong> while a domain warms up; it disappears at full volume.</p></blockquote>
+<h3 id="4-7-mixing-and-safety">4.7 Mixing and safety</h3>
+<p><strong>Mixing:</strong> on average, how many different customers send from one domain per day.</p>
+<div class="tbl"><table><thead><tr><th>Customers per domain</th><th>Level</th></tr></thead><tbody><tr><td>under 2</td><td>no protection: one customer's bad list hits a domain directly</td></tr><tr><td>2 to 10</td><td>weak</td></tr><tr><td>10 to 30</td><td>working</td></tr><tr><td>30 or more</td><td>fully mixed</td></tr></tbody></table></div>
+<blockquote class="ex"><p>With 12 customers on a domain, one customer's bad list is only a small share of that domain's mail, so it can't drag the domain down alone.</p></blockquote>
+<p><strong>Authentication:</strong> how many live domains pass all three DNS records (SPF, DKIM, DMARC). A domain missing one lands in spam far more often.</p>
+<p><strong>Unmatched replies:</strong> incoming emails that couldn't be tied to an email we sent. A rising line means reply matching is broken. Open the queue on the <strong>Unmatched</strong> page and assign them by hand.</p>
+<p><strong>Registrars / DNS providers / Sending servers:</strong> how your domains are spread across providers.</p>
+<blockquote class="ex"><p>If one registrar holds 80% of your domains and it has a problem, 80% of the pool is hit at once. Spread new domains across providers.</p></blockquote>
+<hr>
+<h2 id="5-numbers-view">5. Numbers view</h2>
+<p>The same figures as plain tables:</p>
+<ul><li><strong>Four counts:</strong> active domains and mailboxes, warming, burned mailboxes, domains retired in 30 days.</li><li><strong>Burned domains:</strong> burn rate, average a week, burned in 7 and 30 days, expected in the next 30 days, and mixing.</li><li><strong>Spare domains:</strong> count against the minimum, how long they last ("no burn yet" when nothing burns), the three restock reasons, and domains per warmup step.</li><li><strong>Capacity:</strong> can send today, customers asked for, room for more $20-a-day customers, internal outreach, and most one domain sends.</li><li><strong>Cost and margin:</strong> cost per email, margin per email, all costs, charged to customers, gross margin (30 days).</li><li><strong>Domains at risk:</strong> sends, bounces and complaints (7 days), change against 30 days, risk score and band.</li><li><strong>Authentication:</strong> which domains miss which record.</li><li><strong>Unmatched replies</strong> and <strong>Where the domains are.</strong></li></ul>
+<hr>
+<h2 id="6-always-at-the-bottom-both-views-what-you-act-on">6. Always at the bottom (both views): what you act on</h2>
+<h3 id="spare-domains-one-by-one">Spare domains, one by one</h3>
+<p>Each aging or warming domain, with:</p>
+<ul><li>its progress and the date it goes active;</li><li>how much it can send today;</li><li>its bad rate over 7 days;</li><li>a "stuck" flag where relevant.</li></ul>
+<p><strong>Activate now</strong> skips the rest of warmup and sends the domain to full volume. This is risky, because its reputation isn't built yet. You must write why (at least 10 characters, logged with your name). It is <strong>refused</strong> if:</p>
+<ul><li>any DNS record (SPF, DKIM, DMARC) is missing;</li><li>our DKIM signature hasn't passed the seed test in the last 3 days;</li><li>its 7-day bad rate is 2% or more.</li></ul>
+<blockquote class="ex"><p>Use it only for a real reason, such as "big customer starts Monday and we're 200 emails a day short". Every early promotion is listed under <strong>Promoted early</strong>.</p></blockquote>
+<h3 id="burned-in-the-last-30-days">Burned in the last 30 days</h3>
+<p>Domain, date (burned or retired), why, the <strong>bad rate</strong> over the emails that decided it, and how many days it lasted. Domains that were promoted early are flagged.</p>
+<h3 id="promoted-early-only-shown-if-any">Promoted early (only shown if any)</h3>
+<p>Who promoted which domain, from which warmup day, why, and its bad rate since. If it burns later, you can trace it back to that decision.</p>
+<h3 id="restock">Restock</h3>
+<p><strong>Targets</strong></p>
+<div class="tbl"><table><thead><tr><th>Setting</th><th>Meaning</th><th>Example</th></tr></thead><tbody><tr><td><strong>Spare domains, minimum</strong></td><td>How many not-yet-sending domains to always have ready.</td><td>15</td></tr><tr><td><strong>Demand margin</strong></td><td>Keep capacity at this multiple of what customers asked for.</td><td>1.2 means 20% extra</td></tr><tr><td><strong>Most domains per restock</strong></td><td>A restock request never asks for more than this.</td><td>5</td></tr></tbody></table></div>
+<p><strong>Request history:</strong> when each request was raised, its status, how many domains it asked for, how long the spares lasted at the time, and your note.</p>
+<div class="tbl"><table><thead><tr><th>Status</th><th>Meaning</th></tr></thead><tbody><tr><td><strong>Pending</strong></td><td>Waiting for you.</td></tr><tr><td><strong>Approved</strong></td><td>You said you'd add them.</td></tr><tr><td><strong>Done</strong></td><td>The domains are in.</td></tr><tr><td><strong>Dismissed</strong></td><td>Closed without action.</td></tr></tbody></table></div>
+<hr>
+<h2 id="7-quick-glossary">7. Quick glossary</h2>
+<div class="tbl"><table><thead><tr><th>Word</th><th>Meaning</th></tr></thead><tbody><tr><td><strong>Capacity</strong></td><td>Emails the pool can send today.</td></tr><tr><td><strong>Asked for</strong></td><td>Emails launched customers' daily budgets pay for ($ ÷ $0.04).</td></tr><tr><td><strong>Bad rate</strong></td><td>(Hard bounces + complaints × 10) ÷ emails.</td></tr><tr><td><strong>Burned</strong></td><td>Over 5% bad on its last 200 emails (mailbox: 50). Stops cold email and keeps answering existing conversations.</td></tr><tr><td><strong>Spare domains</strong></td><td>Bought but not sending at full volume yet (aging + warming).</td></tr><tr><td><strong>Runway</strong></td><td>How many weeks the spare domains last at the current burn. There is none when nothing burns.</td></tr><tr><td><strong>Stuck</strong></td><td>A warming domain 3+ days behind schedule.</td></tr><tr><td><strong>Risk score</strong></td><td>0–1 ranking of which domains to check first. Not a forecast.</td></tr><tr><td><strong>Mixing</strong></td><td>Customers per domain per day. More is safer.</td></tr><tr><td><strong>Restock request</strong></td><td>A reminder to buy N domains. You buy them; nothing is automatic.</td></tr></tbody></table></div>
+</main>
+</div>
+</body>
+</html>

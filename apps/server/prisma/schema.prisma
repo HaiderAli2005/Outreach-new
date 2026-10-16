@@ -1,0 +1,1253 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Identity ───────────────────────────────────────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+model User {
+  id              String           @id @default(cuid())
+  email           String           @unique
+  passwordHash    String?
+  name            String?
+  status          UserStatus       @default(ACTIVE)
+  isPlatformAdmin Boolean          @default(false)
+  emailVerifiedAt DateTime?
+  lastLoginAt     DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  memberships     Membership[]
+  oauthAccounts   OAuthAccount[]
+  refreshTokens   RefreshToken[]
+  emailChallenges EmailChallenge[]
+}
+
+enum ChallengePurpose {
+  VERIFY
+  RESET
+}
+
+enum ChallengeStatus {
+  PENDING
+  APPROVED
+  FAILED
+  EXPIRED
+}
+
+model EmailChallenge {
+  id            String           @id
+  userId        String
+  purpose       ChallengePurpose
+  token         String           @unique
+  matchNumber   Int
+  decoyOne      Int
+  decoyTwo      Int
+  code          String
+  attempts      Int              @default(0)
+  status        ChallengeStatus  @default(PENDING)
+  consumedAt    DateTime?
+  failedAt      DateTime?
+  expiresAt     DateTime
+  createdAt     DateTime         @default(now())
+  answeredIp    String?
+  answeredAgent String?
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, status])
+  @@index([expiresAt])
+}
+
+model OAuthAccount {
+  id                String   @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  createdAt         DateTime @default(now())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  familyId  String
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  ip        String?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+// ─── Tenancy ────────────────────────────────────────────────────────────────
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+}
+
+model Organization {
+  id                    String              @id @default(cuid())
+  name                  String
+  primaryDomain         String?
+  status                OrganizationStatus  @default(ACTIVE)
+  stripeCustomerId      String?             @unique
+  webhookToken          String              @unique @default(cuid())
+  /// Shared credit pool: when set, this workspace spends the credits of that organization (for example an agency
+  /// paying for its client workspaces). Null means the organization pays for itself.
+  billingOrganizationId String?
+  /// Market the customer sells into (global, uk, us, pk, eu-de ...). Shared-pool domains are matched to it.
+  region                String              @default("global")
+  /// CUSTOMER pays per email. INTERNAL is our own outreach (Marketlytics, skimming.ai, RankHouse): sent through the
+  /// pool exactly like a customer's, not billed, left out of revenue and margin, and served after customers.
+  kind                  OrgKind             @default(CUSTOMER)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  billingOrganization   Organization?       @relation("BillingPool", fields: [billingOrganizationId], references: [id], onDelete: SetNull)
+  billedWorkspaces      Organization[]      @relation("BillingPool")
+  creditLedger          CreditLedger[]
+  reservations          CreditReservation[]
+  sends                 Send[]
+  health                CustomerHealth?
+
+  memberships    Membership[]
+  settings       OrgSettings?
+  onboarding     Onboarding?
+  analysisRuns   AnalysisRun[]
+  payments       Payment[]
+  credentials    IntegrationCredential[]
+  campaigns      Campaign[]
+  contacts       Contact[]
+  companies      Company[]
+  messages       Message[]
+  blocklist      BlocklistEntry[]
+  batches        WeeklyBatch[]
+  consents       ConsentRecord[]
+  leadStatuses   LeadStatusVocab[]
+  systemLogs     SystemLog[]
+  usage          UsageCounter[]
+  sendingDomains SendingDomain[]
+  mailboxes      Mailbox[]
+}
+
+model Membership {
+  id              String           @id @default(cuid())
+  organizationId  String
+  userId          String?
+  role            MemberRole       @default(MEMBER)
+  status          MembershipStatus @default(ACTIVE)
+  invitedEmail    String?
+  inviteTokenHash String?          @unique
+  inviteExpiresAt DateTime?
+  createdAt       DateTime         @default(now())
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@unique([organizationId, invitedEmail])
+  @@index([userId])
+}
+
+// ─── Billing ────────────────────────────────────────────────────────────────
+
+enum PaymentStatus {
+  REQUIRES_PAYMENT
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  DISPUTED
+}
+
+model Payment {
+  id                    String        @id @default(cuid())
+  organizationId        String
+  stripePaymentIntentId String        @unique
+  amountCents           Int
+  amountRefundedCents   Int           @default(0)
+  currency              String        @default("usd")
+  status                PaymentStatus @default(REQUIRES_PAYMENT)
+  failureMessage        String?
+  description           String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  organization          Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  refunds               Refund[]
+
+  @@index([organizationId, createdAt])
+  @@index([status])
+}
+
+model Refund {
+  id             String   @id @default(cuid())
+  paymentId      String
+  stripeRefundId String   @unique
+  amountCents    Int
+  reason         String?
+  status         String
+  createdById    String?
+  createdAt      DateTime @default(now())
+  payment        Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+}
+
+enum OrgKind {
+  CUSTOMER
+  INTERNAL
+}
+
+enum WebhookProvider {
+  STRIPE
+  CALENDLY
+  APOLLO
+}
+
+enum WebhookStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
+model WebhookEvent {
+  id             String          @id @default(cuid())
+  provider       WebhookProvider
+  externalId     String
+  type           String
+  organizationId String?
+  status         WebhookStatus   @default(RECEIVED)
+  error          String?
+  payload        Json
+  receivedAt     DateTime        @default(now())
+  processedAt    DateTime?
+
+  @@unique([provider, externalId])
+  @@index([provider, receivedAt])
+  @@index([status])
+}
+
+// ─── Onboarding & sending infrastructure ────────────────────────────────────
+
+model Onboarding {
+  id                 String       @id @default(cuid())
+  organizationId     String       @unique
+  domain             String
+  brand              String
+  summary            String?
+  icp                Json
+  preview            Json?
+  warmupDays         Int          @default(14)
+  inboxesPerDomain   Int          @default(3)
+  provider           String       @default("google")
+  facts              Json?
+  groups             Json?
+  analysis           Json?
+  market             Json?
+  siteReadable       Boolean?
+  fastStart          Boolean      @default(false)
+  analyzedAt         DateTime?
+  analysisError      String?
+  paidAt             DateTime?
+  launchedAt         DateTime?
+  /// "Skip for now" on the card step: the campaign exists but nothing sends until a card is added.
+  cardSkippedAt      DateTime?
+  /// Asked to be emailed when the pool has capacity for them.
+  capacityNotifyAt   DateTime?
+  /// The first search after launch: started straight away instead of waiting for the next scheduled run, and its
+  /// outcome kept so the launch page shows what really happened.
+  firstRunStartedAt  DateTime?
+  firstRunFinishedAt DateTime?
+  firstRunResult     Json?
+  capacityNotifiedAt DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+enum SendingDomainStatus {
+  // Branded flow (parked): a customer's own domains.
+  SELECTED
+  PENDING_REGISTRATION
+  REGISTERING
+  FAILED
+  // Shared pool lifecycle. REGISTERED means bought, DNS not yet configured.
+  REGISTERED
+  AGING
+  WARMING
+  ACTIVE
+  DEGRADED
+  RETIRED
+}
+
+/// A sending domain. organizationId is the owner: NULL means the shared pool, owned by Aperture and usable by any
+/// customer. Every pool row has it NULL; the column stays so a branded tier can come back without a migration.
+model SendingDomain {
+  id                 String              @id @default(cuid())
+  organizationId     String?
+  name               String
+  priceCents         Int
+  status             SendingDomainStatus @default(SELECTED)
+  forwardTo          String?
+  /// The registrar's or host's own id for this domain, when there is one.
+  providerId         String?
+  providerStatus     String?
+  prewarmed          Boolean             @default(false)
+  /// The domain the customer picked, when it was taken at purchase time and we registered a close alternative.
+  replacedName       String?
+  registeredAt       DateTime?
+  dnsVerifiedAt      DateTime?
+  sslAt              DateTime?
+  expiresAt          DateTime?
+  autoRenew          Boolean             @default(true)
+  attempts           Int                 @default(0)
+  nextCheckAt        DateTime?
+  lastError          String?
+  registrar          String              @default("unknown")
+  nameserverSet      String?
+  ipPoolId           String?
+  region             String              @default("global")
+  agingUntil         DateTime?
+  warmupStartedAt    DateTime?
+  activatedAt        DateTime?
+  degradedAt         DateTime?
+  retiredAt          DateTime?
+  /// Why it burned, and the bounce rate and send count that decided it.
+  degradeReason      String?
+  degradeBounceRate  Decimal?            @db.Decimal(5, 4)
+  degradeSends       Int?
+  /// Promoted to ACTIVE early by an operator, before its warmup finished.
+  forcedActiveAt     DateTime?
+  forcedActiveById   String?
+  forcedActiveReason String?
+  forcedFromDay      Int?
+  /// Our own authentication, checked daily: DNS records resolve (spf/dkim/dmarc_ok), and a seed message sent to a
+  /// mailbox we control on another provider comes back with SPF, DKIM and DMARC passing (dkim_verified_at).
+  spfOk              Boolean?            @map("spf_ok")
+  dkimOk             Boolean?            @map("dkim_ok")
+  dmarcOk            Boolean?            @map("dmarc_ok")
+  dkimSelector       String?             @map("dkim_selector")
+  dnsCheckedAt       DateTime?           @map("dns_checked_at")
+  dkimVerifiedAt     DateTime?           @map("dkim_verified_at")
+  seedTestAt         DateTime?           @map("seed_test_at")
+  seedToken          String?             @map("seed_token")
+  seedResult         String?             @map("seed_result")
+  /// Paused by an authentication failure or a provider block on our side. Takes no new people until cleared.
+  pausedAt           DateTime?           @map("paused_at")
+  pauseReason        String?             @map("pause_reason")
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  organization       Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  mailboxes          Mailbox[]
+  sends              Send[]
+  healthDaily        DomainHealthDaily[]
+
+  @@unique([organizationId, name])
+  @@index([status])
+  @@index([organizationId])
+}
+
+enum MailboxStatus {
+  PLANNED
+  PENDING
+  CREATING
+  CONNECTING
+  WARMING
+  ACTIVE
+  ERROR
+  RELEASED
+  /// Serves only its already-pinned prospects (follow-ups and replies). Zero new cold emails.
+  REPLIES_ONLY
+  /// Deleted at the provider, no longer billed.
+  RETIRED
+}
+
+/// organizationId NULL means a shared-pool mailbox.
+model Mailbox {
+  id              String           @id @default(cuid())
+  organizationId  String?
+  sendingDomainId String?
+  address         String
+  firstName       String?
+  lastName        String?
+  provider        String           @default("google")
+  /// The mail host's own id for this inbox, when there is one.
+  providerId      String?
+  providerStatus  String?
+  status          MailboxStatus    @default(PLANNED)
+  /// Transport and address, as "smtp:name@domain.com". The prefix picks the MailTransport, so moving to another
+  /// transport later is a data change, not a rewrite.
+  transportRef    String
+  smtpHost        String?
+  smtpPort        Int?
+  imapHost        String?
+  imapPort        Int?
+  /// Key in the secret store that holds the password. The password itself is never in this database.
+  credentialRef   String?
+  lastImapUid     BigInt           @default(0)
+  lastPolledAt    DateTime?
+  /// sent_today resets at midnight here, not UTC, so a business-hours mailbox never bursts at the boundary.
+  timezone        String           @default("UTC")
+  warmupDays      Int              @default(21)
+  dailyLimit      Int              @default(40)
+  /// The per-day limit currently set on the sending account, while the campaign ramps up.
+  sendCap         Int?
+  warmupStartedAt DateTime?
+  activatedAt     DateTime?
+  attempts        Int              @default(0)
+  nextCheckAt     DateTime?
+  lastError       String?
+  /// Shared pool: days into the warmup ramp, today's cold-email cap and what has gone out today.
+  warmupDay       Int              @default(0)
+  sendCapToday    Int              @default(0)
+  sentToday       Int              @default(0)
+  sentTodayOn     DateTime?        @db.Date
+  /// The day the warmup ramp was last stepped, so the hourly job moves it once a day.
+  warmupCheckedOn DateTime?        @db.Date
+  fromNameDefault String?
+  personaId       String?
+  degradedAt      DateTime?
+  degradeReason   String?
+  retiredAt       DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  organization    Organization?    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sendingDomain   SendingDomain?   @relation(fields: [sendingDomainId], references: [id], onDelete: SetNull)
+  persona         Persona?         @relation(fields: [personaId], references: [id], onDelete: SetNull)
+  pinnedContacts  Contact[]
+  sends           Send[]
+  reroutedSends   Send[]           @relation("SendRerouted")
+  inbound         InboundMessage[]
+
+  @@unique([organizationId, address])
+  @@index([status])
+  @@index([sendingDomainId, status])
+}
+
+// ─── Settings & credentials ─────────────────────────────────────────────────
+
+model OrgSettings {
+  organizationId               String       @id
+  autopilotEnabled             Boolean      @default(false)
+  weeklyBatchMode              Boolean      @default(true)
+  autoApproveBatches           Boolean      @default(false)
+  leadSourcing                 LeadSourcing @default(AUTOMATIC)
+  perMailboxDailyCap           Int          @default(30)
+  blocklistNoReplyDays         Int          @default(7)
+  timezone                     String       @default("Europe/London")
+  sendingWindowStart           String       @default("09:00")
+  sendingWindowEnd             String       @default("17:00")
+  language                     String       @default("en")
+  personalizationEnabled       Boolean      @default(true)
+  requireVerifiedEmail         Boolean      @default(true)
+  monthlyCreditCap             Int          @default(0)
+  dailyCreditCap               Int          @default(0)
+  dailySourceTarget            Int          @default(100)
+  expectedBounceRate           Float        @default(0.18)
+  apolloCycleResetDay          Int          @default(1)
+  perCompanyContactCap         Int          @default(2)
+  senderCompany                String?
+  senderTitle                  String?
+  senderAddress                String?
+  meetingLink                  String?
+  valueProp                    String?
+  optOutLine                   String?
+  brandProfile                 Json?
+  slackChannel                 String?
+  browserNotifications         Boolean      @default(false)
+  /// Reply drafts: written for the customer to Send, Edit or Discard. Nothing is ever sent on a timer.
+  draftReplies                 Boolean      @default(true)
+  /// How a campaign may start. APPROVE_FIRST_BATCH (default): the first 20 people and their emails must be approved
+  /// before anything sends. There is no countdown: if nobody approves, nothing is ever sent.
+  launchMode                   LaunchMode   @default(APPROVE_FIRST_BATCH)
+  firstBatchApprovedAt         DateTime?
+  firstBatchApprovedById       String?
+  /// Days emails may go out, 1 = Monday .. 7 = Sunday, in the PROSPECT's local time.
+  sendDays                     Int[]        @default([1, 2, 3, 4, 5])
+  /// Where the prospects are, when a person's own location gives no time zone. Null = derived from the region.
+  prospectTimezone             String?
+  /// Daily spend throttle in deci-cents. Null = no cap (emails per day only), 0 = paused, > 0 = stop for the day there.
+  dailyBudgetDecicents         BigInt?
+  /// Auto-reload (spec 4): off by default. When on, one card charge of the amount when available credit drops below
+  /// the threshold, at most once in 24 hours. A failed charge switches it off and emails the customer.
+  autoReloadEnabled            Boolean      @default(false)
+  autoReloadThresholdDecicents BigInt?
+  autoReloadAmountDecicents    BigInt?
+  autoReloadLastAt             DateTime?
+  /// Why the system switched auto-reload off (card removed or declined, authentication needed, a dispute, account closed).
+  autoReloadDisabledAt         DateTime?
+  autoReloadDisabledReason     String?
+  /// The mandate: the exact sentence the customer agreed to when switching auto-reload on, with when, who and from where.
+  autoReloadMandateText        String?
+  autoReloadMandateAcceptedAt  DateTime?
+  autoReloadMandateIp          String?
+  autoReloadMandateUserId      String?
+  /// Facts the customer has a source for, the only numbers and customer names an email may use as proof:
+  /// [{ "claim": "cut review time by about 60%", "source": "Acme case study, 2026" }].
+  proofPoints                  Json         @default("[]")
+  updatedAt                    DateTime     @updatedAt
+  organization                 Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+enum IntegrationProvider {
+  APOLLO
+  MILLIONVERIFIER
+  SLACK_WEBHOOK
+}
+
+model IntegrationCredential {
+  id             String              @id @default(cuid())
+  organizationId String
+  provider       IntegrationProvider
+  ciphertext     String
+  last4          String
+  updatedAt      DateTime            @updatedAt
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, provider])
+}
+
+// ─── Outreach engine ────────────────────────────────────────────────────────
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+model Campaign {
+  id             String         @id @default(cuid())
+  organizationId String
+  name           String
+  niche          String?
+  marketBrief    String?
+  status         CampaignStatus @default(DRAFT)
+  language       String         @default("en")
+  apolloFilters  Json           @default("{}")
+  /// One entry per audience chosen in setup, each searched on its own: { id, name, filters, page, saturatedAt }.
+  audiences      Json           @default("[]")
+  audienceCursor Int            @default(0)
+  /// The approved 4-touch sequence (days 0, 3, 7, 14) every prospect's emails are written from:
+  /// [{ step, day, subject, body }]. Seeded from the setup sample; edited on Setup > Email sequence.
+  sequence       Json?
+  sourcePage     Int            @default(1)
+  saturatedAt    DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contacts       Contact[]
+
+  @@index([organizationId, status])
+}
+
+model Company {
+  id             String       @id @default(cuid())
+  organizationId String
+  domain         String
+  name           String?
+  website        String?
+  industry       String?
+  employees      Int?
+  description    String?
+  linkedinUrl    String?
+  city           String?
+  country        String?
+  technologies   Json?
+  keywords       Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, domain])
+}
+
+enum ContactStatus {
+  NEW
+  PERSONALIZED
+  QUEUED
+  CONTACTED
+  REPLIED
+  NO_RESPONSE
+  BLOCKLISTED
+  UNSUBSCRIBED
+  BOUNCED
+  REJECTED
+}
+
+enum AutoReplyStatus {
+  AUTO
+  MANUAL
+  PAUSED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+model Contact {
+  id                    String              @id @default(cuid())
+  organizationId        String
+  email                 String
+  emailNormalized       String
+  domain                String?
+  companyDomain         String?
+  firstName             String?
+  lastName              String?
+  fullName              String?
+  title                 String?
+  company               String?
+  website               String?
+  linkedinUrl           String?
+  location              String?
+  city                  String?
+  country               String?
+  phone                 String?
+  industry              String?
+  seniority             String?
+  headline              String?
+  photoUrl              String?
+  apolloId              String?
+  /// The credit reservation that paid for this person, so a bounce can be refunded. Null when no credit was spent.
+  /// Set the first time this person is emailed and never changed again (a database trigger refuses it). Every
+  /// follow-up and reply goes out from this mailbox, even after it stops taking new cold emails.
+  assignedMailboxId     String?
+  campaignId            String?
+  /// The audience (setup buyer group) this person was found for, so a targeting change can say who it affects.
+  audienceId            String?
+  batchId               String?
+  source                String              @default("apollo")
+  status                ContactStatus       @default(NEW)
+  personalizationStatus String              @default("pending")
+  personalization       String?
+  messageSubject        String?
+  followup2             String?
+  followup3             String?
+  followup4             String?
+  emailStatus           String?
+  /// Which finder in the waterfall found this address (apollo, anymailfinder, csv, referral ...).
+  emailSource           String?
+  verifyResult          String?
+  verifyQuality         String?
+  verifiedAt            DateTime?
+  fitScore              Int                 @default(0)
+  tier                  String?
+  firstContactedAt      DateTime?
+  lastContactedAt       DateTime?
+  repliedAt             DateTime?
+  replyClass            String?
+  replyUrgent           Boolean             @default(false)
+  aiDraft               String?
+  aiDraftAt             DateTime?
+  followUpAt            DateTime?
+  handledAt             DateTime?
+  meetingBookedAt       DateTime?
+  autoReplyStatus       AutoReplyStatus     @default(AUTO)
+  autoReplyCount        Int                 @default(0)
+  lastAutoReplyAt       DateTime?
+  linkSentAt            DateTime?
+  handoffAt             DateTime?
+  neverAuto             Boolean             @default(false)
+  lastEscalationReason  String?
+  lastMessageAt         DateTime?
+  lastMessageDirection  MessageDirection?
+  lastMessagePreview    String?
+  messageCount          Int                 @default(0)
+  hasInbound            Boolean             @default(false)
+  /// Reply intelligence: INTERESTED, INFO_REQUEST, REFERRAL, NOT_NOW, NOT_INTERESTED, UNSUBSCRIBE, HOSTILE, UNCLEAR.
+  intent                String?
+  intentConfidence      Decimal?            @db.Decimal(4, 3)
+  intentSetAt           DateTime?
+  /// The customer's one-click correction of `intent`. Reviewed weekly as training data.
+  customerIntent        String?
+  intentCorrectedAt     DateTime?
+  /// hot | warm | cold
+  temperature           String?
+  /// Set once the sequence may never send again: replied, colleague_replied, unsubscribed, bounced, manual ...
+  sequenceStoppedAt     DateTime?
+  sequenceStopReason    String?
+  /// When the next sequence email (first touch or follow-up) is due: a random minute inside the prospect's
+  /// sending window, in the prospect's own time zone.
+  nextTouchAt           DateTime?
+  /// The prospect's IANA time zone, from their location when known.
+  timezone              String?
+  /// Set when this person may be emailed. Null = never sent, whatever the batching settings.
+  approvedAt            DateTime?
+  /// "upload", "review" or "auto".
+  approvalSource        String?
+  /// The one manual message allowed into a thread where the prospect has not replied.
+  manualColdMessageAt   DateTime?
+  raw                   Json?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  organization          Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign              Campaign?           @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  batch                 WeeklyBatch?        @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  assignedMailbox       Mailbox?            @relation(fields: [assignedMailboxId], references: [id], onDelete: Restrict)
+  messages              Message[]
+  sends                 Send[]
+  reservations          CreditReservation[]
+
+  @@unique([organizationId, emailNormalized])
+  @@index([organizationId, status])
+  @@index([organizationId, campaignId])
+  @@index([organizationId, batchId])
+  @@index([organizationId, companyDomain])
+  @@index([organizationId, replyUrgent])
+  @@index([organizationId, lastMessageAt])
+  @@index([organizationId, lastContactedAt])
+  @@index([organizationId, fitScore])
+  @@index([assignedMailboxId])
+  @@index([organizationId, nextTouchAt])
+  @@index([organizationId, intent])
+  @@index([organizationId, audienceId, status])
+}
+
+model Message {
+  id                String           @id @default(cuid())
+  organizationId    String
+  contactId         String
+  campaignId        String?
+  direction         MessageDirection
+  via               String?
+  subject           String?
+  body              String?
+  intent            String?
+  classifyStartedAt DateTime?
+  classifyAttempts  Int              @default(0)
+  /// The RFC 5322 Message-ID of the email this row records, used to thread replies and drop duplicates.
+  emailMessageId    String?
+  meta              Json?
+  createdAt         DateTime         @default(now())
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact           Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, contactId, createdAt])
+  @@index([organizationId, direction, createdAt])
+  @@index([organizationId, intent])
+}
+
+enum BlockEntryType {
+  EMAIL
+  DOMAIN
+}
+
+enum BlockReason {
+  ALREADY_CONTACTED
+  NO_RESPONSE
+  UNSUBSCRIBED
+  BOUNCED
+  COMPLAINED
+  MANUAL
+  COMPETITOR
+  CUSTOMER
+  DEAL_CLOSED
+  REMOVED
+}
+
+model BlocklistEntry {
+  id             String         @id @default(cuid())
+  organizationId String
+  entryType      BlockEntryType
+  value          String
+  reason         BlockReason    @default(MANUAL)
+  note           String?
+  contactId      String?
+  createdAt      DateTime       @default(now())
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, entryType, value])
+  @@index([organizationId, reason])
+  @@index([organizationId, createdAt])
+}
+
+enum BatchStatus {
+  SOURCING
+  REVIEW
+  APPROVED
+  SENDING
+  DONE
+}
+
+model WeeklyBatch {
+  id             String       @id @default(cuid())
+  organizationId String
+  weekStart      DateTime     @db.Date
+  status         BatchStatus  @default(SOURCING)
+  targetClean    Int          @default(0)
+  sourcedClean   Int          @default(0)
+  excludedCount  Int          @default(0)
+  approvedCount  Int?
+  approvedAt     DateTime?
+  lastNagAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contacts       Contact[]
+
+  @@unique([organizationId, weekStart])
+  @@index([organizationId, status])
+}
+
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
+  CRITICAL
+}
+
+model SystemLog {
+  id             String        @id @default(cuid())
+  organizationId String?
+  level          LogLevel      @default(ERROR)
+  source         String
+  message        String
+  meta           Json?
+  resolvedAt     DateTime?
+  createdAt      DateTime      @default(now())
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, resolvedAt, level])
+  @@index([createdAt])
+}
+
+model UsageCounter {
+  id             String       @id @default(cuid())
+  organizationId String
+  day            DateTime     @db.Date
+  peopleEnriched Int          @default(0)
+  searches       Int          @default(0)
+  emailsVerified Int          @default(0)
+  aiCalls        Int          @default(0)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, day])
+}
+
+enum AnalysisRunStatus {
+  RUNNING
+  DONE
+  FAILED
+}
+
+/// One streamed business analysis. Its events replay the run after a reload.
+model AnalysisRun {
+  id             String            @id @default(cuid())
+  organizationId String
+  domain         String
+  status         AnalysisRunStatus @default(RUNNING)
+  lastSeq        Int               @default(0)
+  error          String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  finishedAt     DateTime?
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  events         AnalysisEvent[]
+
+  @@index([organizationId, createdAt])
+  @@map("analysis_runs")
+}
+
+model AnalysisEvent {
+  analysisId String      @map("analysis_id")
+  seq        Int
+  type       String
+  payload    Json
+  createdAt  DateTime    @default(now()) @map("created_at")
+  run        AnalysisRun @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@id([analysisId, seq])
+  @@map("analysis_events")
+}
+
+// ─── Credits: prepaid balance in deci-cents ─────────────────────────────────
+
+enum LedgerKind {
+  TOPUP
+  CHARGE
+  RESERVE
+  RELEASE
+  REFUND
+  BONUS
+}
+
+/// Every movement of a customer's balance, in deci-cents (bigint). amount is positive for credit, negative for debit.
+/// The balance is always the balanceAfter of the newest row: there is no mutable balance column to drift.
+/// RESERVE and RELEASE rows move nothing (amount 0); they record holds, which live in credit_reservations.
+model CreditLedger {
+  id             String       @id @default(cuid())
+  /// Strict insert order. The balance is the newest row's balance_after, and "newest" is the highest seq.
+  seq            BigInt       @unique @default(autoincrement())
+  organizationId String       @map("customer_id")
+  kind           LedgerKind
+  amount         BigInt
+  balanceAfter   BigInt       @map("balance_after")
+  sendId         String?      @map("send_id")
+  reservationId  String?      @map("reservation_id")
+  stripeRef      String?      @map("stripe_ref")
+  note           String?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  send           Send?        @relation(fields: [sendId], references: [id], onDelete: SetNull)
+
+  @@unique([kind, stripeRef])
+  @@unique([kind, sendId])
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@map("credit_ledger")
+}
+
+enum ReservationStatus {
+  OPEN
+  SETTLED
+}
+
+/// Money held for queued emails. A lead pushed for sending holds its whole sequence; each email sent turns 35 of it
+/// into a charge; whatever is left when the sequence ends goes back. available = balance - sum(open holds).
+model CreditReservation {
+  id             String            @id @default(cuid())
+  organizationId String            @map("customer_id")
+  contactId      String?           @map("contact_id")
+  amount         BigInt
+  remaining      BigInt
+  status         ReservationStatus @default(OPEN)
+  createdAt      DateTime          @default(now()) @map("created_at")
+  settledAt      DateTime?         @map("settled_at")
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact        Contact?          @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([contactId, status])
+  @@map("credit_reservations")
+}
+
+// ─── Sending (shared pool) ──────────────────────────────────────────────────
+
+enum SendStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  HARD_BOUNCE
+  SOFT_BOUNCE
+  COMPLAINT
+  /// SPF, DKIM or DMARC refused on OUR side. Counts against the sending domain only, never the customer.
+  AUTH_FAILURE
+  REJECTED
+}
+
+/// One email, or one refused attempt. Only hard bounces and complaints count against health.
+model Send {
+  id              String           @id @default(cuid())
+  organizationId  String           @map("customer_id")
+  campaignId      String?          @map("campaign_id")
+  contactId       String           @map("prospect_id")
+  mailboxId       String?          @map("mailbox_id")
+  domainId        String?          @map("domain_id")
+  isFirstTouch    Boolean          @map("is_first_touch")
+  step            Int              @default(1)
+  status          SendStatus
+  priceCharged    BigInt           @default(0) @map("price_charged")
+  rejectCode      String?          @map("reject_code")
+  rejectReason    String?          @map("reject_reason")
+  bounceCode      String?          @map("bounce_code")
+  bounceReason    String?          @map("bounce_reason")
+  /// Message-ID we put on the wire, always on the sending domain. Null only for refused attempts that never went out.
+  messageId       String?          @unique @map("message_id")
+  inReplyTo       String?          @map("in_reply_to")
+  referencesChain String[]         @default([]) @map("references_chain")
+  subject         String?
+  reroutedFromId  String?          @map("rerouted_from")
+  smtpCode        String?          @map("smtp_code")
+  enhancedCode    String?          @map("enhanced_code")
+  /// How a bounce was read: 'smtp' (refused at send), 'dsn' (RFC 3464 report) or 'heuristic'.
+  bounceParse     String?          @map("bounce_parse")
+  retryCount      Int              @default(0) @map("retry_count")
+  nextRetryAt     DateTime?        @map("next_retry_at")
+  sentAt          DateTime         @default(now()) @map("sent_at")
+  resolvedAt      DateTime?        @map("resolved_at")
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact         Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  mailbox         Mailbox?         @relation(fields: [mailboxId], references: [id], onDelete: SetNull)
+  reroutedFrom    Mailbox?         @relation("SendRerouted", fields: [reroutedFromId], references: [id], onDelete: SetNull)
+  inbound         InboundMessage[]
+  domain          SendingDomain?   @relation(fields: [domainId], references: [id], onDelete: SetNull)
+  ledger          CreditLedger[]
+
+  @@index([organizationId, sentAt(sort: Desc)])
+  @@index([mailboxId, sentAt(sort: Desc)])
+  @@index([domainId, sentAt(sort: Desc)])
+  @@index([status])
+  @@index([contactId, step])
+  @@index([status, nextRetryAt])
+  @@map("sends")
+}
+
+enum CustomerHealthStatus {
+  OK
+  WARNING
+  PAUSED
+}
+
+/// The shared-pool safety valve: one customer's bad list must not burn domains everyone sends from.
+model CustomerHealth {
+  organizationId String               @id @map("customer_id")
+  windowSends    Int                  @default(0) @map("window_sends")
+  windowBounces  Int                  @default(0) @map("window_bounces")
+  bounceRate     Decimal              @default(0) @map("bounce_rate") @db.Decimal(6, 4)
+  status         CustomerHealthStatus @default(OK)
+  pausedAt       DateTime?            @map("paused_at")
+  pausedReason   String?              @map("paused_reason")
+  unpausedAt     DateTime?            @map("unpaused_at")
+  unpausedById   String?              @map("unpaused_by")
+  unpauseReason  String?              @map("unpause_reason")
+  updatedAt      DateTime             @default(now()) @updatedAt @map("updated_at")
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("customer_health")
+}
+
+/// Per-domain daily counts that feed the burn prediction.
+model DomainHealthDaily {
+  domainId    String        @map("domain_id")
+  day         DateTime      @db.Date
+  sends       Int           @default(0)
+  hardBounces Int           @default(0) @map("hard_bounces")
+  complaints  Int           @default(0)
+  domain      SendingDomain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@id([domainId, day])
+  @@map("domain_health_daily")
+}
+
+model PoolMetricsDaily {
+  day                  DateTime  @id @db.Date
+  activeDomains        Int       @map("active_domains")
+  warmingDomains       Int       @map("warming_domains")
+  activeMailboxes      Int       @map("active_mailboxes")
+  warmingMailboxes     Int       @map("warming_mailboxes")
+  repliesOnlyMailboxes Int       @map("replies_only_mailboxes")
+  domainsDegraded      Int       @map("domains_degraded")
+  domainsRetired       Int       @map("domains_retired")
+  ewmaWeeklyBurn       Decimal   @map("ewma_weekly_burn") @db.Decimal(8, 3)
+  /// Average distinct customers per domain per day over the last 7 days. Near 1 means no protection from mixing.
+  dilution             Decimal?  @db.Decimal(8, 2)
+  /// Unmatched inbound messages waiting for an operator. A growing number means thread matching is broken.
+  unmatchedOpen        Int?      @map("unmatched_open")
+  /// Emails a day the pool could send, and what launched customers asked for, on this day. Drawn as the capacity trend.
+  capacity             Int?
+  committed            Int?
+  /// The ops console's aggregates, computed by a job so the page never computes them on load.
+  console              Json?
+  consoleAt            DateTime? @map("console_at")
+
+  @@map("pool_metrics_daily")
+}
+
+enum PoolReorderStatus {
+  PENDING
+  APPROVED
+  DONE
+  DISMISSED
+}
+
+/// A restock the reorder check asks for. Nothing is bought until an operator approves it.
+model PoolReorder {
+  id           String            @id @default(cuid())
+  status       PoolReorderStatus @default(PENDING)
+  domainsToBuy Int               @map("domains_to_buy")
+  runwayWeeks  Decimal           @map("runway_weeks") @db.Decimal(8, 2)
+  ewmaBurn     Decimal           @map("ewma_burn") @db.Decimal(8, 3)
+  region       String            @default("global")
+  decidedById  String?           @map("decided_by")
+  decidedAt    DateTime?         @map("decided_at")
+  note         String?
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  @@index([status])
+  @@map("pool_reorders")
+}
+
+/// The shared pool's restock targets. One row, id "default".
+model PoolSettings {
+  id              String   @id @default("default")
+  spareDomainsMin Int      @default(15)
+  spareMultiplier Decimal  @default(1.0) @db.Decimal(4, 2)
+  maxBuyPerBatch  Int      @default(5)
+  maxBuyPerDay    Int      @default(10)
+  autoBuyEnabled  Boolean  @default(false)
+  updatedAt       DateTime @updatedAt
+}
+
+/// Every message read from a pool mailbox over IMAP, classified. Unmatched ones wait for an operator.
+model InboundMessage {
+  id                String    @id @default(cuid())
+  mailboxId         String    @map("mailbox_id")
+  imapUid           BigInt    @map("imap_uid")
+  /// human_reply | auto_reply | bounce | complaint | unsubscribe | unmatched
+  kind              String
+  matchedSendId     String?   @map("matched_send_id")
+  fromEmail         String    @map("from_email")
+  subject           String?
+  bodyText          String?   @map("body_text")
+  rawHeaders        String?   @map("raw_headers")
+  messageId         String?   @map("message_id")
+  handledAt         DateTime? @map("handled_at")
+  /// An operator attached this message to a conversation by hand from /admin/unmatched.
+  assignedContactId String?   @map("assigned_contact_id")
+  assignedById      String?   @map("assigned_by")
+  receivedAt        DateTime  @default(now()) @map("received_at")
+  mailbox           Mailbox   @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  matchedSend       Send?     @relation(fields: [matchedSendId], references: [id], onDelete: SetNull)
+
+  @@unique([mailboxId, imapUid])
+  @@index([kind, handledAt])
+  @@map("inbound_messages")
+}
+
+/// Pool-wide do-not-email list. Holds sha256(lower(email)), never the address.
+model GlobalSuppression {
+  emailHash String   @id @map("email_hash")
+  /// unsubscribe | hard_bounce | complaint | manual
+  reason    String
+  addedAt   DateTime @default(now()) @map("added_at")
+
+  @@map("global_suppression")
+}
+
+/// Who has emailed whom from the pool, by hash, so two customers never email the same person within 90 days.
+model ProspectContactLog {
+  emailHash   String   @map("email_hash")
+  customerId  String   @map("customer_id")
+  domainId    String   @map("domain_id")
+  mailboxId   String   @map("mailbox_id")
+  contactedAt DateTime @default(now()) @map("contacted_at")
+
+  @@id([emailHash, customerId, contactedAt])
+  @@index([emailHash, contactedAt(sort: Desc)])
+  @@index([emailHash, mailboxId])
+  @@map("prospect_contact_log")
+}
+
+enum LeadSourcing {
+  AUTOMATIC
+  OFF
+}
+
+enum LaunchMode {
+  APPROVE_EACH
+  APPROVE_FIRST_BATCH
+  AUTO
+}
+
+/// The people our pool mailboxes are named after. A handful of personas cross many domains; three mailboxes on one
+/// domain always carry three different personas. Never a single letter: a one-letter sender looks automated.
+model Persona {
+  id         String    @id @default(cuid())
+  firstName  String    @map("first_name")
+  lastName   String?   @map("last_name")
+  /// en, ur, ar, de, fr, es ...
+  locale     String
+  /// Matches SendingDomain.region (global, uk, us, pk, eu-de ...).
+  region     String
+  /// For name and photo coherence only.
+  genderHint String?   @map("gender_hint")
+  active     Boolean   @default(true)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  mailboxes  Mailbox[]
+
+  @@unique([firstName, locale])
+  @@index([locale, active])
+  @@map("personas")
+}
+
+/// The status vocabulary a workspace's inbox uses, editable per workspace (labels, colours, order).
+model LeadStatusVocab {
+  organizationId String       @map("project_id")
+  key            String
+  label          String
+  color          String?
+  sortOrder      Int          @map("sort_order")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, key])
+  @@map("lead_status_vocab")
+}
+
+/// Who authorised sending, word for word, when and from where. The domains are ours, so abuse complaints come to us.
+model ConsentRecord {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  userId         String?      @map("user_id")
+  text           String
+  ip             String?
+  userAgent      String?      @map("user_agent")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@map("consent_records")
+}
+
+/// One AI call and the tokens it really used, so its cost follows the model's price instead of a flat guess.
+model AiUsage {
+  id                String   @id @default(cuid())
+  organizationId    String?
+  /// analysis, sample-emails, personalize, fact-check, reply
+  purpose           String
+  model             String
+  inputTokens       Int
+  cachedInputTokens Int      @default(0)
+  outputTokens      Int
+  createdAt         DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([organizationId, createdAt])
+  @@map("ai_usage")
+}
+
+/// What suppliers charge us per unit, editable from the admin console. One row, id "default". Prices in US dollars.
+model CostSettings {
+  id                 String   @id @default("default")
+  /// { "<model prefix>": { "input": usd per 1M tokens, "cachedInput": ..., "output": ... }, "default": {...} }
+  aiPrices           Json
+  apolloPerEnrichUsd Decimal  @db.Decimal(12, 6)
+  apolloPerSearchUsd Decimal  @db.Decimal(12, 6)
+  verifyPerEmailUsd  Decimal  @db.Decimal(12, 6)
+  paymentFeePercent  Decimal  @db.Decimal(6, 3)
+  paymentFeeFixedUsd Decimal  @db.Decimal(8, 4)
+  /// Per mailbox per month while it sends, and while it is burned (replies only) until it retires.
+  mailboxMonthUsd            Decimal @default(4.00) @db.Decimal(8, 2)
+  repliesOnlyMailboxMonthUsd Decimal @default(3.00) @db.Decimal(8, 2)
+  /// Registration per domain per year.
+  domainYearUsd              Decimal @default(15.00) @db.Decimal(8, 2)
+  updatedById        String?
+  updatedAt          DateTime @updatedAt
+}
+

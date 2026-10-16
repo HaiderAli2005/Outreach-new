@@ -1,0 +1,22 @@
+FROM node:22-slim AS deps
+WORKDIR /repo
+COPY package.json package-lock.json ./
+COPY apps/server/package.json apps/server/package.json
+COPY apps/client/package.json apps/client/package.json
+RUN npm ci --workspace apps/client --include-workspace-root=false
+
+FROM deps AS build
+ARG API_ORIGIN=http://localhost:4000
+ARG API_PROXY=on
+ENV API_ORIGIN=$API_ORIGIN API_PROXY=$API_PROXY NEXT_TELEMETRY_DISABLED=1
+COPY apps/client apps/client
+RUN npm run build -w apps/client
+
+FROM node:22-slim AS runtime
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=8080 HOSTNAME=0.0.0.0
+WORKDIR /app
+COPY --from=build /repo/apps/client/.next/standalone ./
+COPY --from=build /repo/apps/client/.next/static ./apps/client/.next/static
+USER node
+EXPOSE 8080
+CMD ["node", "apps/client/server.js"]

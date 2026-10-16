@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.next/
+.env
+.env.local
+*.log
+coverage/
+.DS_Store
+next-env.d.ts
+*.tsbuildinfo
+.secrets/
+
+# Local test leads (real email addresses): never committed
+aperture-test-leads.csv

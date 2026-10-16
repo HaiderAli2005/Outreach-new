@@ -1,0 +1,31 @@
+FROM node:22-slim AS deps
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+WORKDIR /repo
+COPY package.json package-lock.json ./
+COPY apps/server/package.json apps/server/package.json
+COPY apps/client/package.json apps/client/package.json
+RUN npm ci --workspace apps/server --include-workspace-root=false
+
+FROM deps AS build
+COPY apps/server apps/server
+RUN npm run build -w apps/server
+
+FROM build AS migrate
+WORKDIR /repo/apps/server
+CMD ["npx", "prisma", "migrate", "deploy"]
+
+FROM node:22-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production
+WORKDIR /repo
+COPY --from=build /repo/package.json /repo/package-lock.json ./
+COPY --from=build /repo/node_modules ./node_modules
+COPY --from=build /repo/apps/server/package.json apps/server/package.json
+COPY --from=build /repo/apps/server/dist apps/server/dist
+COPY --from=build /repo/apps/server/prisma apps/server/prisma
+RUN npm prune --omit=dev --workspace apps/server --include-workspace-root=false || true
+USER node
+WORKDIR /repo/apps/server
+EXPOSE 8080
+ENV PORT=8080
+CMD ["node", "dist/index.js"]

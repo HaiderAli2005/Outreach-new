@@ -1,0 +1,37 @@
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    environment: "node",
+    globalSetup: ["./test/globalSetup.ts"],
+    setupFiles: ["./test/setupEnv.ts"],
+    fileParallelism: false,
+    testTimeout: 30_000,
+    hookTimeout: 60_000,
+    env: {
+      NODE_ENV: "test",
+      DATABASE_URL: process.env.TEST_DATABASE_URL ?? "postgresql://aperture:aperture@localhost:55432/aperture_test?schema=public",
+      REDIS_URL: "",
+      JWT_ACCESS_SECRET: "test-access-secret-that-is-long-enough-123",
+      ENCRYPTION_KEY: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+      JOBS_SECRET: "test-jobs-secret",
+      WEBHOOK_SECRET: "test-webhook-secret",
+      APPROVE_LINK_SECRET: "test-approve-secret",
+      WEB_ORIGIN: "http://localhost:3000",
+      PUBLIC_API_URL: "http://localhost:4000",
+      STRIPE_SECRET_KEY: "sk_test_fake",
+      STRIPE_PUBLISHABLE_KEY: "pk_test_fake",
+      STRIPE_WEBHOOK_SECRET: "whsec_test_secret",
+      MAIL_HOST: "",
+      MAIL_USER: "",
+      MAIL_PASS: "",
+      MAIL_FROM: "",
+      OPENAI_API_KEY: "",
+      APOLLO_API_KEY: "",
+      MILLIONVERIFIER_API_KEY: "",
+      SLACK_WEBHOOK_URL: "",
+      GOOGLE_CLIENT_ID: "",
+      GOOGLE_CLIENT_SECRET: "",
+    },
+  },
+});

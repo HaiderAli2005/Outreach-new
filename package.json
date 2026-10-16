@@ -1,0 +1,31 @@
+{
+  "name": "aperture-app",
+  "private": true,
+  "workspaces": [
+    "apps/server",
+    "apps/client"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:server": "npm run dev -w apps/server",
+    "dev:client": "npm run dev -w apps/client",
+    "build": "npm run build -w apps/server && npm run build -w apps/client",
+    "test": "npm test -w apps/server && npm test -w apps/client",
+    "typecheck": "npm run typecheck -w apps/server && npm run typecheck -w apps/client",
+    "db:up": "docker compose -f infra/docker-compose.yml up -d",
+    "setup": "node scripts/setup.mjs",
+    "dev": "node scripts/dev.mjs"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.2"
+  },
+  "allowScripts": {
+    "@prisma/client@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
+    "bcrypt@6.0.0": true,
+    "esbuild@0.28.2": true,
+    "prisma@6.19.3": true
+  }
+}
