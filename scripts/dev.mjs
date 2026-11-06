@@ -63,8 +63,68 @@ if (stripeKey && process.env.APERTURE_NO_STRIPE_LISTEN !== "1") {
   }
 }
 
+const WIN = process.platform === "win32";
+
+/** Stops a process and everything it started. On Windows `kill` only ends the shell wrapper, leaving node running. */
+function killTree(p) {
+  if (!p || p.exitCode !== null) return;
+  if (WIN) {
+    try {
+      execSync(`taskkill /pid ${p.pid} /T /F`, { stdio: "ignore" });
+    } catch {
+      // Already gone.
+    }
+  } else p.kill();
+}
+
+/**
+ * A node process left over from an earlier run (the terminal closed, the API crashed) can still hold a port, so the
+ * new run can't start and the page talks to nothing. Frees ports 3100 and 4000, stopping only node processes.
+ */
+function freePorts(ports) {
+  if (!WIN) return;
+  let lines = [];
+  try {
+    lines = execSync("netstat -ano -p tcp", { encoding: "utf8" }).split(/\r?\n/);
+  } catch {
+    return;
+  }
+  const pids = new Set();
+  for (const l of lines) {
+    const m = l.trim().split(/\s+/);
+    if (m.length >= 5 && m[3] === "LISTENING" && ports.some((p) => m[1].endsWith(`:${p}`))) pids.add(m[4]);
+  }
+  for (const pid of pids) {
+    let image = "";
+    try {
+      image = execSync(`tasklist /FI "PID eq ${pid}" /FO CSV /NH`, { encoding: "utf8" });
+    } catch {
+      continue;
+    }
+    if (!/^"node\.exe"/i.test(image.trim())) continue;
+    try {
+      execSync(`taskkill /pid ${pid} /T /F`, { stdio: "ignore" });
+      console.log(`Stopped an old Aperture process (pid ${pid}) that was still holding a port from an earlier run.`);
+    } catch {
+      // Gone already.
+    }
+  }
+}
+freePorts([3100, 4000]);
+
 const names = webhookSecret ? ["server", "client", "stripe"] : ["server", "client"];
-const procs = names.map((name) => {
+const procs = new Map();
+let stopping = false;
+/** API restarts in the last 10 minutes: past 5, something is really broken, so stop instead of looping. */
+const restarts = [];
+
+function stopAll(code) {
+  stopping = true;
+  for (const p of procs.values()) killTree(p);
+  process.exit(code ?? 0);
+}
+
+function start(name) {
   const p =
     name === "stripe"
       ? spawn("stripe", ["listen", "--forward-to", "localhost:4000/api/v1/billing/webhook", "--events", STRIPE_EVENTS], { stdio: ["ignore", "pipe", "pipe"], shell: true, env: stripeEnv })
@@ -74,15 +134,30 @@ const procs = names.map((name) => {
   pipe(p.stdout, process.stdout);
   pipe(p.stderr, process.stderr);
   p.on("exit", (code) => {
+    if (stopping) return;
     console.log(`${tag}exited with code ${code}`);
     // The Stripe listener stopping only stops webhooks; the app keeps running.
     if (name === "stripe") return;
-    procs.forEach((x) => x.kill());
-    process.exit(code ?? 0);
+    if (name === "server") {
+      const now = Date.now();
+      while (restarts.length && now - restarts[0] > 10 * 60_000) restarts.shift();
+      if (restarts.length < 5) {
+        restarts.push(now);
+        console.log(`${tag}restarting the API in 2 seconds, so the web app never runs without it.`);
+        killTree(p);
+        setTimeout(() => !stopping && start("server"), 2000);
+        return;
+      }
+      console.error(`${tag}the API stopped 5 times in 10 minutes. Stopping everything; read the error above, fix it, then run npm run dev again.`);
+    }
+    stopAll(code);
   });
+  procs.set(name, p);
   return p;
-});
+}
+names.forEach(start);
 
 console.log("Starting the API on http://localhost:4000 and the web app on http://localhost:3100. Press Ctrl+C to stop.");
 if (webhookSecret) console.log("Stripe events are forwarded to the API, so payments show in Admin → Webhooks.");
-process.on("SIGINT", () => procs.forEach((p) => p.kill()));
+process.on("SIGINT", () => stopAll(0));
+process.on("SIGTERM", () => stopAll(0));

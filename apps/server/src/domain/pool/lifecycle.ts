@@ -176,20 +176,35 @@ export async function retireQuietMailboxes(now = new Date()): Promise<LifecycleR
 }
 
 export async function retireMailbox(m: { id: string; address: string }, now = new Date(), why = `quiet for ${QUIET_DAYS} days`): Promise<void> {
-  const row = await prisma.mailbox.findUnique({ where: { id: m.id }, select: { credentialRef: true } });
+  const row = await prisma.mailbox.findUnique({ where: { id: m.id }, select: { credentialRef: true, provider: true } });
   if (row?.credentialRef) await secretStore().remove(row.credentialRef).catch(() => undefined);
   await prisma.mailbox.update({ where: { id: m.id }, data: { status: "RETIRED", retiredAt: now, sendCapToday: 0 } });
-  await logSystem(null, "INFO", "pool", `${m.address} retired: ${why}. Cancel it with its mail provider so it stops costing money.`, { mailboxId: m.id });
+  // A mailbox Aperture ordered is cancelled at its supplier by the next sync (inboxkit/sync.ts); any other one by hand.
+  const cancel = row?.provider === "inboxkit" ? "Its InboxKit plan is cancelled automatically." : "Cancel it with its mail provider so it stops costing money.";
+  await logSystem(null, "INFO", "pool", `${m.address} retired: ${why}. ${cancel}`, { mailboxId: m.id });
+}
+
+/** Where a supplier-warmed domain joins the ladder: day 8, 10 a day, then 20 and 30, a week each, then ACTIVE. */
+export const SUPPLIER_WARMED_LADDER_DAY = 8;
+
+/** A supplier-warmed domain whose warmup is done and healthy: it starts the ladder at 10 a day (inboxkit/sync.ts). */
+export async function startSupplierWarmedLadder(domainId: string, now = new Date()): Promise<number> {
+  const r = await prisma.sendingDomain.updateMany({ where: { id: domainId, status: "AGING", externalWarmup: true }, data: { status: "WARMING", warmupStartedAt: now, lastError: null } });
+  if (!r.count) return 0;
+  return startLadder({ domainId }, SUPPLIER_WARMED_LADDER_DAY);
 }
 
 // ─── 7.3 domain ─────────────────────────────────────────────────────────────
 
-/** Hourly. Ages, warms, activates, degrades and retires pool domains. */
-/** Starts the ladder at day 1 for a domain's connected mailboxes (or the ones given). Cap 5 today. */
-async function startLadder(where: { domainId?: string; ids?: string[] }): Promise<number> {
+/**
+ * Starts the ladder for a domain's connected mailboxes (or the ones given), at day 1 (cap 5 today) for a fresh domain.
+ * A domain the supplier already warmed starts further up (day 8: 10 a day, then 20, then 30, a week each).
+ */
+async function startLadder(where: { domainId?: string; ids?: string[] }, day = 1): Promise<number> {
   const clause = where.domainId ? `m."sendingDomainId" = $1` : `m.id = ANY($1::text[])`;
+  const start = Math.max(1, Math.min(WARMUP_DAYS_TO_ACTIVE - 1, Math.floor(day)));
   return prisma.$executeRawUnsafe(
-    `UPDATE "Mailbox" m SET status = 'WARMING', "warmupDay" = 1, "sendCapToday" = ${capForWarmupDay(1)}, "warmupStartedAt" = now(),
+    `UPDATE "Mailbox" m SET status = 'WARMING', "warmupDay" = ${start}, "sendCapToday" = ${capForWarmupDay(start)}, "warmupStartedAt" = now(),
        "warmupCheckedOn" = (now() AT TIME ZONE m."timezone")::date
      WHERE ${clause} AND m.status = 'CONNECTING' AND m."credentialRef" IS NOT NULL AND m."lastError" IS NULL`,
     where.domainId ?? where.ids ?? [],
@@ -213,17 +228,22 @@ export async function degradeDomain(d: { id: string; name: string }, reason: str
 export async function evaluateDomainHealth(now = new Date()): Promise<LifecycleReport> {
   const report = blank();
 
-  // AGING -> WARMING: 30 quiet days are over and the domain's own SPF, DKIM and DMARC still resolve. A domain that
+  // AGING -> WARMING: the quiet aging days are over and the domain's own SPF, DKIM and DMARC still resolve. A domain that
   // starts emailing days after registration looks like a throwaway spam domain, which is why it waits.
-  const aged = await prisma.sendingDomain.findMany({ where: { ...pool, status: "AGING", agingUntil: { lte: now }, spfOk: true, dkimOk: true, dmarcOk: true }, select: { id: true } });
+  // A domain the supplier warms (externalWarmup) leaves AGING through its own check instead (inboxkit/sync.ts), which
+  // also needs the supplier's warmup to be healthy.
+  const aged = await prisma.sendingDomain.findMany({ where: { ...pool, status: "AGING", externalWarmup: false, agingUntil: { lte: now }, spfOk: true, dkimOk: true, dmarcOk: true }, select: { id: true } });
   for (const d of aged) {
     await prisma.sendingDomain.update({ where: { id: d.id }, data: { status: "WARMING", warmupStartedAt: now } });
     await startLadder({ domainId: d.id });
     report.domainsWarming++;
   }
   // Mailboxes connected after their domain started warming start their own ladder at day 1.
-  const late = await prisma.mailbox.findMany({ where: { ...pool, status: "CONNECTING", credentialRef: { not: null }, lastError: null, sendingDomain: { status: { in: ["WARMING", "ACTIVE"] }, prewarmed: false } }, select: { id: true } });
-  if (late.length) await startLadder({ ids: late.map((m) => m.id) });
+  const late = await prisma.mailbox.findMany({ where: { ...pool, status: "CONNECTING", credentialRef: { not: null }, lastError: null, sendingDomain: { status: { in: ["WARMING", "ACTIVE"] }, prewarmed: false } }, select: { id: true, sendingDomain: { select: { externalWarmup: true } } } });
+  const fresh = late.filter((m) => !m.sendingDomain?.externalWarmup).map((m) => m.id);
+  const supplierWarmed = late.filter((m) => m.sendingDomain?.externalWarmup).map((m) => m.id);
+  if (fresh.length) await startLadder({ ids: fresh });
+  if (supplierWarmed.length) await startLadder({ ids: supplierWarmed }, SUPPLIER_WARMED_LADDER_DAY);
   // On a domain that came warmed, a newly signed-in mailbox goes straight to full capacity.
   await prisma.mailbox.updateMany({
     where: { ...pool, status: "CONNECTING", credentialRef: { not: null }, lastError: null, sendingDomain: { status: "ACTIVE", prewarmed: true } },
@@ -263,7 +283,7 @@ export async function evaluateDomainHealth(now = new Date()): Promise<LifecycleR
   return report;
 }
 
-/** A newly bought pool domain: DNS is set, so it starts its quiet month. */
+/** A newly bought pool domain: DNS is set, so it starts its quiet aging period. */
 export function agingUntilFrom(start: Date): Date {
   return new Date(start.getTime() + AGING_DAYS * DAY);
 }

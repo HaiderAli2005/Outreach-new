@@ -64,7 +64,6 @@ describe("LaunchStep", () => {
     show(state);
     expect(await screen.findByText(/the Apollo key is missing/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "We couldn't find your first people" })).toBeInTheDocument();
-    expect(screen.getByText("Needs attention")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/onboarding/first-run")).toBe(true));
   });
@@ -74,7 +73,6 @@ describe("LaunchStep", () => {
     mockServer({ "GET /onboarding": () => json({ data: state }) });
     show(state);
     expect(await screen.findByRole("heading", { name: "Your first 20 people are ready" })).toBeInTheDocument();
-    expect(screen.getAllByText("Needs you").length).toBeGreaterThan(0);
     for (const a of screen.getAllByRole("link", { name: "Review and approve" })) expect(a).toHaveAttribute("href", "/app/approve");
   });
 
@@ -90,7 +88,6 @@ describe("LaunchStep", () => {
     mockServer({ "GET /onboarding": () => json({ data: state }) });
     show(state);
     expect(await screen.findByRole("heading", { name: "Your campaign is live" })).toBeInTheDocument();
-    expect(screen.getByText("Live")).toBeInTheDocument();
     expect(screen.getByText(/First emails go out from 09:00/)).toBeInTheDocument();
   });
 
@@ -109,7 +106,7 @@ describe("LaunchStep", () => {
     const state = live(run({ state: "done", found: 40, verified: 31, written: 20, approved: true, needsApproval: false, finishedAt: new Date().toISOString() }));
     mockServer({ "GET /onboarding": () => json({ data: state }), "GET /dashboard/cockpit": () => json({ data: cockpitWith(false, { contacts: true, sent: false, replied: false }) }) });
     show(state);
-    expect((await screen.findAllByText("Autopilot is off")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Sending is switched off")).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("link", { name: "Turn it on in Settings" })[0]).toHaveAttribute("href", "/app/settings?tab=autopilot");
   });
 

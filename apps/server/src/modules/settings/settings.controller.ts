@@ -17,6 +17,7 @@ const patchSchema = z
     sendingWindowStart: time,
     sendingWindowEnd: time,
     language: z.string().regex(/^[a-z]{2}$/),
+    matchProspectLanguage: z.boolean(),
     personalizationEnabled: z.boolean(),
     requireVerifiedEmail: z.boolean(),
     monthlyCreditCap: z.number().int().min(0).max(10_000_000),
@@ -46,7 +47,7 @@ const patchSchema = z
   .partial()
   .strict();
 
-const provider = z.object({ provider: z.enum(["APOLLO", "MILLIONVERIFIER", "SLACK_WEBHOOK"]) });
+const provider = z.object({ provider: z.enum(["APOLLO", "MILLIONVERIFIER", "SLACK_WEBHOOK", "GOOGLE_PLACES"]) });
 
 export async function view(req: Request, res: Response) {
   return ok(res, await service.view(ctx(req).orgId));

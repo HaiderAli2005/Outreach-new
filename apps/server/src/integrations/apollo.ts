@@ -1,5 +1,5 @@
 import Bottleneck from "bottleneck";
-import { fetchJson } from "./http.js";
+import { fetchJson, HttpError } from "./http.js";
 import { getCredential } from "./credentials.js";
 
 const BASE = "https://api.apollo.io";
@@ -68,12 +68,25 @@ export function compactFilters<T extends Record<string, unknown>>(filters: T): T
   return out as T;
 }
 
+/**
+ * Apollo answers 422 when the account's lead credits are used up (looking up an email costs one; searching is free).
+ * That is not a bad search, so it gets its own status and plain words instead of "HTTP 422".
+ */
+export const OUT_OF_CREDITS = "The lead search has used all of its credits for this month, so new people's email addresses can't be looked up yet. Finding people restarts as soon as credits are added.";
+function creditsExhausted(err: unknown): boolean {
+  if (!(err instanceof HttpError) || err.status !== 422) return false;
+  const b = err.body as { error?: unknown; error_details?: { code?: unknown } } | undefined;
+  return b?.error_details?.code === "BILLING.LIMIT.CREDITS_EXHAUSTED" || /insufficient credits/i.test(String(b?.error ?? ""));
+}
+
 export class ApolloClient implements ApolloApi {
   constructor(private readonly apiKey: string) {}
 
   private post<T>(path: string, body: unknown): Promise<T> {
     const clean = body && typeof body === "object" && !Array.isArray(body) ? compactFilters(body as Record<string, unknown>) : body;
-    return limiter.schedule(() => fetchJson<T>(`${BASE}${path}`, { method: "POST", body: clean, headers: { "X-Api-Key": this.apiKey, "Cache-Control": "no-cache" } }));
+    return limiter.schedule(() => fetchJson<T>(`${BASE}${path}`, { method: "POST", body: clean, headers: { "X-Api-Key": this.apiKey, "Cache-Control": "no-cache" } })).catch((err) => {
+      throw creditsExhausted(err) ? new HttpError(402, OUT_OF_CREDITS, (err as HttpError).body) : err;
+    });
   }
 
   async searchPeople(filters: Record<string, unknown>, page: number, perPage: number) {

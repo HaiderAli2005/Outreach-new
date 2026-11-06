@@ -100,7 +100,7 @@ describe("admin: adding pool domains by hand", () => {
     expect(r).toEqual({ spf: true, dkim: true, dmarc: true, selector: "s2" });
   });
 
-  it("ages a new domain 30 days, then starts the 5-a-day ladder", async () => {
+  it("ages a new domain 14 days, then starts the 5-a-day ladder", async () => {
     const a = await admin();
     dnsFor("compliancedrift.org");
     await api()
@@ -110,7 +110,8 @@ describe("admin: adding pool domains by hand", () => {
       .expect(201);
     const d = await prisma.sendingDomain.findFirstOrThrow({ where: { name: "compliancedrift.org" } });
     expect(d.status).toBe("AGING");
-    expect(d.agingUntil!.getTime()).toBeGreaterThan(Date.now() + 29 * 86_400_000);
+    expect(d.agingUntil!.getTime()).toBeGreaterThan(Date.now() + 13 * 86_400_000);
+    expect(d.agingUntil!.getTime()).toBeLessThan(Date.now() + 15 * 86_400_000);
     await evaluateDomainHealth();
     expect((await prisma.sendingDomain.findUniqueOrThrow({ where: { id: d.id } })).status).toBe("AGING");
     await prisma.sendingDomain.update({ where: { id: d.id }, data: { agingUntil: new Date(Date.now() - 1000) } });

@@ -10,6 +10,7 @@ import { unsubscribeUrl } from "../src/domain/sending/unsubscribe.js";
 import { pushQueue } from "../src/jobs/send.js";
 import { advanceWarmup, capForWarmupDay, evaluateDomainHealth, evaluateMailboxHealth, stepBack } from "../src/domain/pool/lifecycle.js";
 import { checkReorderTrigger, ewmaSeries, predictedBurn, riskScore, shelfRunway } from "../src/domain/pool/metrics.js";
+import { LEAD_TIME_WEEKS } from "../src/config/plans.js";
 import { balanceOf, holdsOf } from "../src/domain/credits/index.js";
 
 type SendStatus = "SENT" | "HARD_BOUNCE" | "SOFT_BOUNCE" | "COMPLAINT";
@@ -262,8 +263,9 @@ describe("pool lifecycle", () => {
     expect(riskScore({ sends7: 50, bad7: 5, complaints7: 1, sends30: 199, bad30: 5 }).band).toBe("INSUFFICIENT_DATA");
     // 2 at risk of 20 active, EWMA 1.5: 2 + 1.5 x 4.3 x 18/20 = 7.805
     expect(predictedBurn(2, 20, 1.5).total).toBeCloseTo(7.805, 10);
-    // 6 warm on the shelf at EWMA 1.5 is 4 weeks: under the 9-week lead time, buy ceil(5 x 1.5) = 8.
-    expect(shelfRunway(6, 1.5)).toMatchObject({ runwayWeeks: 4, reorder: true, domainsToBuy: 8, reorderBecause: { burnReplacement: 8, driver: "burnReplacement" } });
+    // 6 warm on the shelf at EWMA 1.5 is 4 weeks: under the 7-week lead time (14 aging + 29 warmup days), buy ceil(3 x 1.5) = 5.
+    expect(LEAD_TIME_WEEKS).toBe(7);
+    expect(shelfRunway(6, 1.5)).toMatchObject({ runwayWeeks: 4, reorder: true, domainsToBuy: 5, reorderBecause: { burnReplacement: 5, driver: "burnReplacement" } });
     expect(shelfRunway(5, 0)).toMatchObject({ runwayWeeks: 50, reorder: false, domainsToBuy: 0 });
   });
 

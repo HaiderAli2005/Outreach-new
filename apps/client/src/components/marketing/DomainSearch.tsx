@@ -180,10 +180,10 @@ export function DomainSearch({ id, cta, onDomain, hero }: { id: string; cta?: bo
         <i aria-hidden="true" />
         <span>No card needed</span>
       </span>
-      <button type="button" className="proof-link" onClick={() => void go("northwind.io", false)}>
-        Try it with northwind.io
-        <Icon id="arr" />
-      </button>
+      <span className="proof-gift">
+        <Icon id="gift" />
+        $10 free in credits
+      </span>
     </div>
   ) : null;
 

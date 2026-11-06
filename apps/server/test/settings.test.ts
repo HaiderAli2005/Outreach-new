@@ -13,7 +13,7 @@ describe("settings", () => {
       .set(t.auth)
       .send({ sendDays: [5, 1, 1, 3], prospectTimezone: "America/Los_Angeles", dailyBudgetDecicents: "20000", proofPoints: [{ claim: "cut review time by about 60%", source: "Acme case study" }] });
     expect(res.status).toBe(200);
-    expect(res.body.data.settings).toMatchObject({ sendDays: [1, 3, 5], prospectTimezone: "America/Los_Angeles", dailyBudgetDecicents: "20000", dailySourceTarget: 125 });
+    expect(res.body.data.settings).toMatchObject({ sendDays: [1, 3, 5], prospectTimezone: "America/Los_Angeles", dailyBudgetDecicents: "20000", dailySourceTarget: 500 });
     expect(res.body.data.settings).not.toHaveProperty("defaultDailySendCap");
     expect(res.body.data.budget).toMatchObject({ budget: "20000", state: "running" });
     await api().patch("/api/v1/settings").set(t.auth).send({ sendDays: [] }).expect(400);

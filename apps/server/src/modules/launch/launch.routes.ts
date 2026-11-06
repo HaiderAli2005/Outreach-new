@@ -5,6 +5,7 @@ import { requireManager } from "../../middleware/auth.js";
 import { parseBody } from "../../middleware/validate.js";
 import { approveFirstBatch, approvePeople, approvalView, hasConsent, recordConsent } from "../../domain/launch.js";
 import { saveVocab, vocabFor } from "../../domain/leadStatus.js";
+import { startFillToday } from "../onboarding/firstRun.js";
 
 const meta = (req: Request) => ({ ip: req.ip ?? null, userAgent: req.get("user-agent") ?? null });
 
@@ -12,8 +13,11 @@ const meta = (req: Request) => ({ ip: req.ip ?? null, userAgent: req.get("user-a
 export const launchRouter = Router();
 launchRouter.get("/", async (req: Request, res: Response) => ok(res, await approvalView(ctx(req).orgId)));
 launchRouter.post("/approve", requireManager, async (req: Request, res: Response) => {
-  const body = parseBody(req, z.object({ consent: z.boolean().default(false), excludeIds: z.array(z.string().max(40)).max(50).default([]) }));
-  return ok(res, await approveFirstBatch(ctx(req).orgId, ctx(req).userId, { ...body, ...meta(req) }));
+  const body = parseBody(req, z.object({ consent: z.boolean().default(false), excludeIds: z.array(z.string().max(40)).max(50).default([]), shownIds: z.array(z.string().max(40)).max(50).default([]), autoContinue: z.boolean().optional() }));
+  const r = await approveFirstBatch(ctx(req).orgId, ctx(req).userId, { ...body, ...meta(req) });
+  // The rest of today's emails are prepared now, not a few each run.
+  startFillToday(ctx(req).orgId);
+  return ok(res, r);
 });
 launchRouter.post("/approve-people", requireManager, async (req: Request, res: Response) => {
   const body = parseBody(req, z.object({ ids: z.array(z.string().max(40)).min(1).max(200), consent: z.boolean().default(false) }));

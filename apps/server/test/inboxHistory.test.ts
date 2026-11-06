@@ -27,6 +27,21 @@ describe("a mailbox's old mail", () => {
     ]);
   });
 
+  it("files the supplier's warmup traffic as warmup while its warmup runs, and keeps unknown mail queued once it stops", async () => {
+    const m = await makePoolMailbox();
+    await prisma.mailbox.update({ where: { id: m.id }, data: { provider: "inboxkit", supplierWarmupStatus: "active" } });
+    transport.deliver(m.address, mail(m.address, new Date(), "Quick question about the quarterly plan"));
+    await pollMailbox(await prisma.mailbox.findUniqueOrThrow({ where: { id: m.id } }));
+    await prisma.mailbox.update({ where: { id: m.id }, data: { supplierWarmupStatus: "cancelled" } });
+    transport.deliver(m.address, mail(m.address, new Date(), "Someone new"));
+    await pollMailbox(await prisma.mailbox.findUniqueOrThrow({ where: { id: m.id } }));
+    const rows = await prisma.inboundMessage.findMany({ orderBy: { imapUid: "asc" }, select: { kind: true, handledAt: true } });
+    expect(rows.map((r) => [r.kind, !!r.handledAt])).toEqual([
+      ["warmup", true],
+      ["unmatched", false],
+    ]);
+  });
+
   it("starts reading a new mailbox where it joined, not from its first email ever", async () => {
     const m = await makePoolMailbox();
     let readFrom = -1;

@@ -21,6 +21,22 @@ const schema = z.object({
   GOOGLE_CLIENT_ID: optional,
   GOOGLE_CLIENT_SECRET: optional,
   GOOGLE_REDIRECT_URI: optional,
+  /**
+   * Google Workspace mailboxes signed in with OAuth instead of app passwords (integrations/googleMail.ts).
+   * GOOGLE_MAIL_SERVICE_ACCOUNT: the service account's JSON key (raw JSON or base64 of it). With it, a Workspace admin
+   * allows its client ID once (domain-wide delegation, scope https://mail.google.com/) and every mailbox in that
+   * Workspace signs in with no password. It can also be saved from Admin > Domains, which keeps it in the secret store.
+   * GOOGLE_MAIL_CLIENT_ID / _SECRET: the OAuth client for "Connect with Google" on one mailbox; default the sign-in client.
+   */
+  GOOGLE_MAIL_SERVICE_ACCOUNT: optional,
+  GOOGLE_MAIL_CLIENT_ID: optional,
+  GOOGLE_MAIL_CLIENT_SECRET: optional,
+  GOOGLE_MAIL_REDIRECT_URI: optional,
+  /**
+   * InboxKit (domain/pool/inboxkit): Aperture orders domains with mailboxes and InboxKit warmup on them. The key can
+   * also be saved from Admin > Domains, which keeps it in the secret store (that copy wins).
+   */
+  INBOXKIT_API_KEY: optional,
   STRIPE_SECRET_KEY: optional,
   STRIPE_PUBLISHABLE_KEY: optional,
   STRIPE_WEBHOOK_SECRET: optional,
@@ -30,6 +46,12 @@ const schema = z.object({
   MAIL_PASS: optional,
   MAIL_FROM: optional,
   OPENAI_API_KEY: optional,
+  /**
+   * Azure OpenAI instead of OpenAI: the resource's v1 endpoint ("https://<resource>.openai.azure.com/openai/v1") and
+   * its key. While the endpoint is set every AI call goes to Azure, and the model settings below name deployments.
+   */
+  AZURE_OPENAI_ENDPOINT: optional,
+  AZURE_OPENAI_API_KEY: optional,
   OPENAI_MODEL: z.string().default("gpt-4.1-mini"),
   /**
    * Models for the first impression (the business analysis and the sample emails), best first, separated by commas.
@@ -37,6 +59,10 @@ const schema = z.object({
    */
   OPENAI_ANALYSIS_MODEL: z.string().default("gpt-6-luna,gpt-4.1"),
   APOLLO_API_KEY: optional,
+  /** Google Maps Platform key with the Places API (New) enabled, for campaigns that find businesses on Google Maps. */
+  GOOGLE_PLACES_API_KEY: optional,
+  /** Google Maps searches one campaign may run per sourcing round (each is one billed Text Search request). */
+  MAPS_SEARCHES_PER_RUN: z.coerce.number().int().min(0).max(200).default(10),
   MILLIONVERIFIER_API_KEY: optional,
   SLACK_WEBHOOK_URL: optional,
   /** Email finders after Apollo, in order. Each must be confirmed to allow resale inside a SaaS before it is listed. */
@@ -124,10 +150,19 @@ export const webOrigins = env.WEB_ORIGIN.split(",").map((s) => s.trim()).filter(
  */
 export const googleRedirectUri = env.GOOGLE_REDIRECT_URI || `${(webOrigins[0] ?? "").replace(/\/$/, "")}/api/v1/auth/oauth/google/callback`;
 
+/** Where Google sends an operator back after "Connect with Google" on a pool mailbox. Same-site, like sign-in. */
+export const googleMailRedirectUri = env.GOOGLE_MAIL_REDIRECT_URI || `${(webOrigins[0] ?? "").replace(/\/$/, "")}/api/v1/google-mail/callback`;
+
+/** The OAuth client used to connect one Google mailbox: its own, or the sign-in client. */
+export const googleMailClient = {
+  id: env.GOOGLE_MAIL_CLIENT_ID ?? env.GOOGLE_CLIENT_ID,
+  secret: env.GOOGLE_MAIL_CLIENT_ID ? env.GOOGLE_MAIL_CLIENT_SECRET : env.GOOGLE_CLIENT_SECRET,
+};
+
 export const features = {
   googleOAuth: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
   stripe: Boolean(env.STRIPE_SECRET_KEY),
-  ai: Boolean(env.OPENAI_API_KEY),
+  ai: Boolean(env.AZURE_OPENAI_ENDPOINT ? env.AZURE_OPENAI_API_KEY : env.OPENAI_API_KEY),
   mail: Boolean(env.MAIL_HOST && env.MAIL_USER && env.MAIL_PASS && env.MAIL_FROM),
   /** Live progress stream for the business analysis. Off means the old single request. */
   analysisStream: !/^(0|false|no|off)$/i.test(env.ANALYSIS_STREAM ?? "true"),

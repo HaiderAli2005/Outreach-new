@@ -1,0 +1,233 @@
+/*
+ * Light theme for the logged-in app (Cockpit, Inbox, Leads, Settings, Admin).
+ *
+ * The app shell sets html[data-theme="light"] only while it is on screen, so the landing page and onboarding keep
+ * their own look. Dark is the default and is unchanged: every colour below has its dark twin in globals.css /
+ * app-ui.css. Warm cream canvas and near-black ink; Aperture's gold stays the accent, deepened so it reads on cream.
+ */
+
+html[data-theme="light"] {
+  color-scheme: light;
+  /* channels the stylesheets use for hairlines, hovers, wells and shadows */
+  --tw: 70 54 30;
+  --hw: 46 38 26;
+  --dk: 255 255 255;
+  --shk: 0.32;
+  --data: #3a3834;
+  /* chart colours: a warm amber gold (richer than the text gold) and the reference glacier blue */
+  --chart-1: #b07d22;
+  --chart-2: #6f8db4;
+
+  --bg: #e8e3d9;
+  --bg-2: #fbfaf7;
+  --bg-3: #f3efe8;
+  --ink: #141413;
+  --ink-2: #4a4741;
+  --ink-3: #625d55;
+  --ink-4: #8c867c;
+  --gold: #94671f;
+  --gold-2: #8a5e1a;
+  --gold-deep: #7a5418;
+  /* design-v2.css redefines these for the whole page in their dark form; dialogs, menus and pop-ups live outside
+     the app shell, so the light values must be set here at the page level too. */
+  --surface: #fbfaf7;
+  --surface-2: #f3efe8;
+  --field: #ffffff;
+  --hair: #ddd6ca;
+  --hair-2: #cbc3b5;
+  --gold-soft: rgba(148, 103, 31, 0.12);
+  --gold-line: rgba(148, 103, 31, 0.45);
+  --on-gold: #15100c;
+  --good: #2d7149;
+  --warn: #94600f;
+  --bad: #b8421a;
+  --line: rgba(20, 20, 19, 0.09);
+  --line-2: rgba(20, 20, 19, 0.15);
+  --pane: rgba(251, 250, 247, 0.82);
+  --glass-fill: linear-gradient(180deg, #fbfaf7, #f8f5f0);
+  --gold-text: linear-gradient(180deg, #8a5e1a 0%, #6e4a14 100%);
+}
+
+html[data-theme="light"] .ap-shell,
+html[data-theme="light"] .shell-bg {
+  --bg: #e8e3d9;
+  --surface: #fbfaf7;
+  --surface-2: #f3efe8;
+  --field: #ffffff;
+  --hair: #ddd6ca;
+  --hair-2: #cbc3b5;
+  --ink: #141413;
+  --ink-2: #4a4741;
+  --ink-3: #625d55;
+  --ink-4: #8c867c;
+  --gold: #94671f;
+  --good: #2d7149;
+  --warn: #94600f;
+  --bad: #b8421a;
+  --gold-soft: rgba(148, 103, 31, 0.1);
+  --gold-line: rgba(148, 103, 31, 0.45);
+}
+
+html[data-theme="light"] body {
+  background: #e8e3d9;
+  color: var(--ink);
+}
+
+/* Shell */
+html[data-theme="light"] .ap-top {
+  background: rgba(232, 227, 217, 0.86);
+}
+
+/* Buttons: the gold button keeps its white shine on cream */
+html[data-theme="light"] .btn-primary {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 -2px 6px rgba(120, 80, 20, 0.16), 0 8px 20px -12px rgba(150, 105, 40, 0.55), 0 0 0 1px rgba(170, 125, 60, 0.45);
+}
+
+/* Floating surfaces: menus, tooltips, drawers */
+html[data-theme="light"] .ui-select-pop,
+html[data-theme="light"] .ibx-menu-pop,
+html[data-theme="light"] .ibx-dd-pop,
+html[data-theme="light"] .ap-pop {
+  background: #fdfcfa;
+  box-shadow: 0 0 0 1px #ddd6ca, 0 2px 6px rgba(20, 20, 19, 0.05), 0 14px 34px -10px rgba(20, 20, 19, 0.22);
+}
+html[data-theme="light"] .ch-tip {
+  background: #fdfcfa;
+  color: var(--ink-2);
+  box-shadow: 0 0 0 1px #ddd6ca, 0 12px 30px -8px rgba(20, 20, 19, 0.22);
+}
+html[data-theme="light"] .ch-pill {
+  fill: #fdfcfa;
+}
+html[data-theme="light"] .ch-dot {
+  stroke: #fbfaf7;
+}
+
+/* Inbox */
+html[data-theme="light"] .ibx-th-head {
+  background: rgba(251, 250, 247, 0.92);
+}
+html[data-theme="light"] .ibx-msg-body,
+html[data-theme="light"] .msg .body {
+  color: var(--ink);
+}
+@media (max-width: 1380px) {
+  html[data-theme="light"] .ibx-info {
+    background: #fbfaf7;
+    box-shadow: -24px 0 50px -24px rgba(20, 20, 19, 0.25);
+  }
+}
+
+/* Chips and labels that fixed a light grey for dark backgrounds */
+html[data-theme="light"] .chip-s.v {
+  color: var(--ink-2);
+}
+html[data-theme="light"] .chip-s.g {
+  color: #2d7149;
+  background: rgba(45, 113, 73, 0.1);
+}
+html[data-theme="light"] .chip-s.y {
+  color: #94600f;
+  background: rgba(148, 96, 15, 0.1);
+}
+html[data-theme="light"] .chip-s.r {
+  color: #b8421a;
+  background: rgba(184, 66, 26, 0.09);
+}
+
+/* Cards get the reference's soft, layered paper shadow instead of a dark drop */
+html[data-theme="light"] .ap-card,
+html[data-theme="light"] .cpt-hero,
+html[data-theme="light"] .cpt-kpis,
+html[data-theme="light"] .cpt-task {
+  box-shadow: inset 0 0 0 1px #ddd6ca, 0 1px 2px rgba(20, 20, 19, 0.05), 0 10px 28px -14px rgba(20, 20, 19, 0.14);
+}
+html[data-theme="light"] .cpt-hero {
+  background: radial-gradient(900px 260px at 0% 0%, rgba(148, 103, 31, 0.07), transparent 60%), #fbfaf7;
+}
+html[data-theme="light"] .chip-s.b {
+  color: #7a5418;
+  background: rgba(148, 103, 31, 0.12);
+}
+
+/* Admin and tables: a paper header row instead of near-black, and no dark halo around glass cards */
+html[data-theme="light"] .tbl th {
+  background: rgba(246, 243, 238, 0.96);
+  color: var(--ink-3);
+}
+html[data-theme="light"] .glass {
+  box-shadow: inset 0 0 0 1px #ddd6ca, 0 1px 2px rgba(20, 20, 19, 0.05), 0 10px 28px -16px rgba(20, 20, 19, 0.16);
+}
+html[data-theme="light"] .ibx-info-pop {
+  background: #fdfcfa;
+  box-shadow: 0 0 0 1px #ddd6ca, 0 14px 34px -10px rgba(20, 20, 19, 0.22);
+}
+/* Charts: grid lines whisper, so the data carries the page */
+html[data-theme="light"] .ch-grid {
+  stroke: rgba(20, 20, 19, 0.06);
+}
+html[data-theme="light"] .ch-base {
+  stroke: rgba(20, 20, 19, 0.16);
+}
+
+/* Dropdown hover: a soft paper tint, not the dark-mode near-black */
+html[data-theme="light"] .ui-select:hover:not(:disabled) {
+  background-color: #f3efe8;
+}
+html[data-theme="light"] .ui-select.input:hover:not(:disabled) {
+  background-color: #fbfaf7;
+}
+
+/* Dialogs, drawers and toasts: paper surfaces with a soft lift, and a lighter page dim behind dialogs */
+html[data-theme="light"] .modal,
+html[data-theme="light"] .drawer,
+html[data-theme="light"] .toast {
+  --glass-fill: linear-gradient(180deg, #fdfcfa, #f8f5f0);
+  box-shadow: 0 0 0 1px #ddd6ca, 0 2px 6px rgba(20, 20, 19, 0.05), 0 24px 60px -16px rgba(20, 20, 19, 0.28);
+}
+html[data-theme="light"] .modal-scrim,
+html[data-theme="light"] .drawer-scrim {
+  background: rgba(20, 20, 19, 0.3);
+}
+
+/* Fixed light-on-dark colours found by the light-mode audit, app and admin only */
+html[data-theme="light"] .chip button:hover,
+html[data-theme="light"] .stepper button:hover:not(:disabled) {
+  color: var(--ink);
+}
+html[data-theme="light"] .mail-body {
+  color: var(--ink);
+}
+html[data-theme="light"] .msg mark.tok,
+html[data-theme="light"] mark.tok {
+  color: #7a5418;
+  background: rgba(148, 103, 31, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(148, 103, 31, 0.25);
+}
+html[data-theme="light"] .dm-dnschip.ok {
+  color: #2d7149;
+}
+html[data-theme="light"] .dm-dnschip.bad,
+html[data-theme="light"] .dm-err {
+  color: #b8421a;
+}
+html[data-theme="light"] .pg-kpi,
+html[data-theme="light"] .pg-hero-say,
+html[data-theme="light"] .ch-stack .key > div {
+  background: #fbfaf7;
+}
+html[data-theme="light"] .pg-hero.bad .pg-hero-say {
+  background: linear-gradient(180deg, rgba(184, 66, 26, 0.06), rgba(184, 66, 26, 0)), #fbfaf7;
+}
+html[data-theme="light"] .pg-hero.warn .pg-hero-say {
+  background: linear-gradient(180deg, rgba(148, 96, 15, 0.06), rgba(148, 96, 15, 0)), #fbfaf7;
+}
+html[data-theme="light"] .pg-hero.good .pg-hero-say {
+  background: linear-gradient(180deg, rgba(45, 113, 73, 0.06), rgba(45, 113, 73, 0)), #fbfaf7;
+}
+
+/* Upload warmed mailboxes: results stay readable on cream. */
+html[data-theme="light"] .imp-ok { color: #2f7a43; }
+html[data-theme="light"] .imp-bad { color: #b4412c; }
+html[data-theme="light"] .imp-wait { color: #8a5a00; }
+html[data-theme="light"] .imp-next { background: rgba(176, 120, 20, .07); box-shadow: inset 0 0 0 1px rgba(176, 120, 20, .3); }

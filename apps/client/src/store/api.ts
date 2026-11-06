@@ -2,6 +2,7 @@ import { createApi, fetchBaseQuery, type BaseQueryFn, type FetchArgs, type Fetch
 import { sessionReceived, signedOut, rememberedOrg } from "./authSlice";
 import { creditsRefused } from "./upgradeSlice";
 import type {
+  AudienceList,
   SiteCheck,
   PoolSettings,
   BusinessProfile,
@@ -9,10 +10,21 @@ import type {
   TargetingView,
   TargetingEdit,
   TargetingImpact,
+  NewCampaignInput,
+  CampaignPreview,
+  CampaignImport,
   AddedPoolDomain,
+  MailboxImport,
+  MailboxImportRequest,
   NewPoolDomain,
   NewPoolMailbox,
   PoolDomain,
+  GoogleMailStatus,
+  InboxKitPipeline,
+  InboxKitPlan,
+  InboxKitSettingsPatch,
+  InboxKitStatus,
+  SupplierOrder,
   AutopilotStatus,
   Batch,
   BlockEntry,
@@ -20,7 +32,7 @@ import type {
   Catalogue,
   Cockpit,
   CostPrices,
-  Performance,
+  Performance, PerformancePeriod, CampaignNavItem, CampaignWorkspace,
   Company,
   Contact,
   CreditPacing,
@@ -128,11 +140,29 @@ const apiSlice = () => api;
 /** Messages already shown by the upgrade prompt; callers that toast errors stay quiet for these. */
 const HANDLED_CODES = new Set(["INSUFFICIENT_CREDITS"]);
 
+/** "contact.postal_code" -> "Postal code". */
+const fieldLabel = (path: string) => {
+  const last = (path.split(".").pop() ?? path).replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  return last.charAt(0).toUpperCase() + last.slice(1);
+};
+
+/** The server's per-field problems on a rejected form, by field path ("contact.country": "The two-letter ..."). */
+export function fieldErrors(err: unknown): Record<string, string> {
+  const details = (err as { data?: { error?: { details?: unknown } } } | undefined)?.data?.error?.details;
+  if (!Array.isArray(details)) return {};
+  const out: Record<string, string> = {};
+  for (const d of details as { path?: unknown; message?: unknown }[]) if (typeof d?.path === "string" && typeof d?.message === "string" && !out[d.path]) out[d.path] = d.message;
+  return out;
+}
+
 export function errorMessage(err: unknown, fallback = "Something went wrong. Please try again."): string {
   if (!err || typeof err !== "object") return fallback;
   if (HANDLED_CODES.has(errorCode(err) ?? "")) return "";
   const e = err as { status?: unknown; data?: unknown; error?: string; message?: string };
   const data = e.data as { error?: { message?: string } } | undefined;
+  // A rejected form says which fields and why, not only that some are wrong.
+  const fields = Object.entries(fieldErrors(err));
+  if (data?.error?.message && fields.length) return `${data.error.message}: ${fields.map(([p, m]) => (p ? `${fieldLabel(p)}: ${m}` : m)).join(" · ")}`;
   if (data?.error?.message) return data.error.message;
   if (e.status === "FETCH_ERROR") return "Can't reach the server. Check your connection and try again.";
   if (typeof e.message === "string" && e.message) return e.message;
@@ -221,6 +251,11 @@ export const api = createApi({
       query: ({ purpose, idempotencyKey }) => ({ url: "/billing/setup-intents", method: "POST", body: { purpose }, headers: { "idempotency-key": idempotencyKey } }),
       transformResponse: unwrap,
     }),
+    /** A Stripe-hosted page (Checkout, setup mode) to save a card on. Returns the URL to send the browser to. */
+    cardCheckout: b.mutation<{ url: string }, { returnPath: string; cancelPath: string; idempotencyKey: string }>({
+      query: ({ returnPath, cancelPath, idempotencyKey }) => ({ url: "/billing/card-checkout", method: "POST", body: { returnPath, cancelPath }, headers: { "idempotency-key": idempotencyKey } }),
+      transformResponse: unwrap,
+    }),
     removeCard: b.mutation<{ removed: number }, void>({ query: () => ({ url: "/billing/card", method: "DELETE" }), transformResponse: unwrap, invalidatesTags: ["Credits"] }),
     closeAccount: b.mutation<{ closed: boolean }, { confirm: string }>({ query: (body) => ({ url: "/billing/close", method: "POST", body }), transformResponse: unwrap }),
     reverify: b.mutation<{ requeued: number }, void>({ query: () => ({ url: "/billing/reverify", method: "POST" }), transformResponse: unwrap, invalidatesTags: ["Credits", "Cockpit", "Nav"] }),
@@ -299,7 +334,9 @@ export const api = createApi({
     launch: b.mutation<LaunchResult, void>({ query: () => ({ url: "/onboarding/launch", method: "POST" }), transformResponse: unwrap, invalidatesTags: ["Onboarding", "Campaigns", "Cockpit", "Nav", "Settings", "Autopilot"] }),
 
     cockpit: b.query<Cockpit, void>({ query: () => "/dashboard/cockpit", transformResponse: unwrap, providesTags: ["Cockpit"] }),
-    performance: b.query<Performance, 7 | 30>({ query: (days) => `/dashboard/performance?days=${days}`, transformResponse: unwrap, providesTags: ["Cockpit"] }),
+    performance: b.query<Performance, { period: PerformancePeriod; campaign?: string | null }>({ query: ({ period, campaign }) => `/dashboard/performance${qs({ period, campaign })}`, transformResponse: unwrap, providesTags: ["Cockpit"] }),
+    campaignsNav: b.query<CampaignNavItem[], void>({ query: () => "/dashboard/campaigns", transformResponse: unwrap, providesTags: ["Campaigns", "Nav"] }),
+    campaignWorkspace: b.query<CampaignWorkspace, string>({ query: (id) => `/dashboard/campaigns/${encodeURIComponent(id)}`, transformResponse: unwrap, providesTags: ["Campaigns", "Cockpit"] }),
     budgetCard: b.query<BudgetCard, void>({ query: () => "/dashboard/budget", transformResponse: unwrap, providesTags: ["Cockpit"], keepUnusedDataFor: 0 }),
     navCounts: b.query<NavCounts, void>({ query: () => "/dashboard/nav-counts", transformResponse: unwrap, providesTags: ["Nav"] }),
     engineStop: b.mutation<{ stopped: boolean }, void>({
@@ -433,10 +470,15 @@ export const api = createApi({
     }),
     autopilot: b.query<AutopilotStatus, void>({ query: () => "/settings/autopilot-status", transformResponse: unwrap, providesTags: ["Autopilot"] }),
     launchView: b.query<LaunchView, void>({ query: () => "/launch", transformResponse: unwrap, providesTags: ["Launch"] }),
-    approveFirstBatch: b.mutation<{ approved: number }, { consent: boolean; excludeIds?: string[] }>({
+    approveFirstBatch: b.mutation<{ approved: number; continued?: number }, { consent: boolean; excludeIds?: string[]; shownIds?: string[]; autoContinue?: boolean }>({
       query: (body) => ({ url: "/launch/approve", method: "POST", body }),
       transformResponse: unwrap,
-      invalidatesTags: ["Launch", "Settings", "Cockpit", "Contacts"],
+      invalidatesTags: ["Launch", "Settings", "Cockpit", "Contacts", "Batches", "Nav"],
+    }),
+    leaveOut: b.mutation<{ leftOut: boolean }, string>({
+      query: (id) => ({ url: `/contacts/${id}/leave-out`, method: "POST" }),
+      transformResponse: unwrap,
+      invalidatesTags: ["Cockpit", "Contacts", "Batches"],
     }),
     approvePeople: b.mutation<{ approved: number }, { ids: string[]; consent: boolean }>({
       query: (body) => ({ url: "/launch/approve-people", method: "POST", body }),
@@ -476,6 +518,11 @@ export const api = createApi({
       transformResponse: unwrap,
       invalidatesTags: ["Contacts", "Campaigns", "Batches", "Usage", "Nav", "Credits"],
     }),
+    audienceList: b.query<AudienceList, { page?: number; status?: "WAITING" | "PULLED"; q?: string }>({
+      query: ({ page = 1, status, q }) => ({ url: "/sourcing/audience", params: { page, ...(status ? { status } : {}), ...(q ? { q } : {}) } }),
+      transformResponse: unwrap,
+      providesTags: ["Contacts", "Usage"],
+    }),
     sourcingUsage: b.query<{ pacing: CreditPacing; days: { day: string; peopleEnriched: number; searches: number; emailsVerified: number; aiCalls: number }[] }, void>({
       query: () => "/sourcing/usage",
       transformResponse: unwrap,
@@ -500,6 +547,20 @@ export const api = createApi({
       query: (body) => ({ url: "/setup/targeting", method: "PUT", body }),
       transformResponse: unwrap,
       invalidatesTags: ["Campaigns", "Contacts", "Nav", "Cockpit"],
+    }),
+    previewCampaign: b.mutation<CampaignPreview, NewCampaignInput>({
+      query: (body) => ({ url: "/setup/targeting/audiences/preview", method: "POST", body }),
+      transformResponse: unwrap,
+    }),
+    importCampaigns: b.mutation<CampaignImport, { rows: NewCampaignInput[]; check: boolean }>({
+      query: (body) => ({ url: "/setup/targeting/audiences/import", method: "POST", body }),
+      transformResponse: unwrap,
+      invalidatesTags: (r) => (r?.created.length ? ["Campaigns", "Nav", "Cockpit"] : []),
+    }),
+    addCampaign: b.mutation<{ id: string; name: string }, NewCampaignInput>({
+      query: (body) => ({ url: "/setup/targeting/audiences", method: "POST", body }),
+      transformResponse: unwrap,
+      invalidatesTags: ["Campaigns", "Nav", "Cockpit"],
     }),
     siteCheck: b.query<SiteCheck, string>({
       query: (domain) => `/public/site-check?domain=${encodeURIComponent(domain)}`,
@@ -564,6 +625,11 @@ export const api = createApi({
       transformResponse: unwrap,
       invalidatesTags: ["Admin"],
     }),
+    adminImportMailboxes: b.mutation<MailboxImport, MailboxImportRequest>({
+      query: (body) => ({ url: "/admin/domains/import", method: "POST", body }),
+      transformResponse: unwrap,
+      invalidatesTags: (r) => (r?.done ? ["Admin"] : []),
+    }),
     adminAddMailbox: b.mutation<{ id: string; address: string; ok: boolean; error?: string }, NewPoolMailbox & { domainId: string; locale: string }>({
       query: ({ domainId, ...body }) => ({ url: `/admin/domains/${domainId}/mailboxes`, method: "POST", body }),
       transformResponse: unwrap,
@@ -579,6 +645,32 @@ export const api = createApi({
       transformResponse: unwrap,
       invalidatesTags: ["Admin"],
     }),
+    adminGoogleMail: b.query<GoogleMailStatus, void>({ query: () => "/admin/google-mail", transformResponse: unwrap, providesTags: ["Admin"] }),
+    adminSaveServiceAccount: b.mutation<GoogleMailStatus, { key: string }>({
+      query: (body) => ({ url: "/admin/google-mail/service-account", method: "PUT", body }),
+      transformResponse: unwrap,
+      invalidatesTags: ["Admin"],
+    }),
+    /** "workspace": sign in through the service account. "connect": get the Google URL for one mailbox. */
+    adminMailboxGoogle: b.mutation<{ ok?: boolean; error?: string; url?: string }, { id: string; action: "workspace" | "connect" }>({
+      query: ({ id, action }) => ({ url: `/admin/mailboxes/${id}/google/${action}`, method: "POST", body: {} }),
+      transformResponse: unwrap,
+      invalidatesTags: (_r, _e, a) => (a.action === "workspace" ? ["Admin"] : []),
+    }),
+    // InboxKit: order new domains with mailboxes and warmup, and follow them to the ladder.
+    adminInboxKit: b.query<InboxKitStatus, void>({ query: () => "/admin/inboxkit", transformResponse: unwrap, providesTags: ["Admin"] }),
+    adminInboxKitKey: b.mutation<InboxKitStatus, { key: string }>({ query: (body) => ({ url: "/admin/inboxkit/key", method: "PUT", body }), transformResponse: unwrap, invalidatesTags: ["Admin"] }),
+    adminInboxKitSettings: b.mutation<InboxKitStatus, InboxKitSettingsPatch>({ query: (body) => ({ url: "/admin/inboxkit/settings", method: "PATCH", body }), transformResponse: unwrap, invalidatesTags: ["Admin"] }),
+    adminInboxKitPlan: b.query<InboxKitPlan, void>({ query: () => "/admin/inboxkit/plan", transformResponse: unwrap, providesTags: ["Admin"] }),
+    /** Checks names at InboxKit and prices the order. Buys nothing. */
+    adminInboxKitQuote: b.mutation<SupplierOrder, { domains: number; region: string; locale: string }>({ query: (body) => ({ url: "/admin/inboxkit/quote", method: "POST", body }), transformResponse: unwrap }),
+    adminInboxKitOrder: b.mutation<SupplierOrder, { id: string; action: "confirm" | "cancel" }>({
+      query: ({ id, action }) => ({ url: `/admin/inboxkit/orders/${id}/${action}`, method: "POST", body: {} }),
+      transformResponse: unwrap,
+      invalidatesTags: ["Admin"],
+    }),
+    adminInboxKitPipeline: b.query<InboxKitPipeline, void>({ query: () => "/admin/inboxkit/pipeline", transformResponse: unwrap, providesTags: ["Admin"] }),
+    adminInboxKitSync: b.mutation<Record<string, number | string>, void>({ query: () => ({ url: "/admin/inboxkit/sync", method: "POST", body: {} }), transformResponse: unwrap, invalidatesTags: ["Admin"] }),
     adminPool: b.query<AdminPoolView, void>({ query: () => "/admin/pool", transformResponse: unwrap, providesTags: ["Admin"] }),
     /** Recomputes the pool figures now instead of serving the copy cached every 15 minutes. */
     adminPoolRecompute: b.mutation<AdminPoolView, void>({ query: () => ({ url: "/admin/pool?fresh=1" }), transformResponse: unwrap, invalidatesTags: ["Admin"] }),
@@ -640,7 +732,8 @@ export const api = createApi({
     adminAdjustCredits: b.mutation<BalanceView, { id: string; amount: string; reason: string }>({
       query: ({ id, ...body }) => ({ url: `/admin/organizations/${id}/credits`, method: "POST", body }),
       transformResponse: unwrap,
-      invalidatesTags: ["Admin"],
+      // The adjusted workspace may be the one open in this browser: its wallet, Cockpit and Credits read it again.
+      invalidatesTags: ["Admin", "Credits", "Cockpit", "Nav"],
     }),
     adminRefund: b.mutation<unknown, { id: string; amountCents?: number; reason?: string }>({
       query: ({ id, ...body }) => ({ url: `/admin/payments/${id}/refund`, method: "POST", body }),
@@ -682,6 +775,8 @@ export const {
   useLaunchMutation,
   useCockpitQuery,
   usePerformanceQuery,
+  useCampaignsNavQuery,
+  useCampaignWorkspaceQuery,
   useBudgetCardQuery,
   useNavCountsQuery,
   useEngineStopMutation,
@@ -703,7 +798,9 @@ export const {
   useExcludeFromBatchMutation,
   useCampaignsQuery,
   useCampaignQuery,
-  useCreateCampaignMutation,
+  useAddCampaignMutation,
+  usePreviewCampaignMutation,
+  useImportCampaignsMutation,
   useUpdateCampaignMutation,
   useSetCampaignStatusMutation,
   useBlocklistQuery,
@@ -718,6 +815,7 @@ export const {
   useAutopilotQuery,
   useLaunchViewQuery,
   useApproveFirstBatchMutation,
+  useLeaveOutMutation,
   useApprovePeopleMutation,
   useGiveConsentMutation,
   useVocabQuery,
@@ -732,6 +830,7 @@ export const {
   useSourcingSearchMutation,
   useSourcingImportMutation,
   useSourcingUsageQuery,
+  useAudienceListQuery,
   useCreateOrganizationMutation,
   useOrganizationQuery,
   useDeleteWorkspaceMutation,
@@ -743,6 +842,7 @@ export const {
   useTargetingQuery,
   useTargetingCheckMutation,
   useSaveTargetingMutation,
+  useCreateCampaignMutation,
   useUpdateOrganizationMutation,
   useMembersQuery,
   useInviteMutation,
@@ -758,12 +858,25 @@ export const {
   useAdminRefundMutation,
   useAdminDomainsQuery,
   useAdminAddDomainMutation,
+  useAdminImportMailboxesMutation,
   useAdminAddMailboxMutation,
   useAdminDomainActionMutation,
   useAdminMailboxActionMutation,
+  useAdminGoogleMailQuery,
+  useAdminInboxKitQuery,
+  useAdminInboxKitKeyMutation,
+  useAdminInboxKitSettingsMutation,
+  useAdminInboxKitPlanQuery,
+  useAdminInboxKitQuoteMutation,
+  useAdminInboxKitOrderMutation,
+  useAdminInboxKitPipelineQuery,
+  useAdminInboxKitSyncMutation,
+  useAdminSaveServiceAccountMutation,
+  useAdminMailboxGoogleMutation,
   useCreditsQuery,
   useTopupMutation,
   useStartSetupMutation,
+  useCardCheckoutMutation,
   useOnboardingVolumeQuery,
   useSkipCardMutation,
   useNotifyCapacityMutation,

@@ -13,7 +13,7 @@ import { PoolGraphs } from "@/components/admin/PoolGraphs";
 
 const REORDER_TONE: Record<AdminPoolView["reorders"][number]["status"], "g" | "b" | "v" | "y" | "r"> = { PENDING: "y", APPROVED: "b", DONE: "g", DISMISSED: "v" };
 const PIPE: [string, string][] = [
-  ["aging", "Aging (30 quiet days)"],
+  ["aging", "Aging (quiet days)"],
   ["d1-7", "Warmup days 1 to 7"],
   ["d8-14", "Days 8 to 14"],
   ["d15-21", "Days 15 to 21"],
@@ -174,20 +174,6 @@ export default function AdminPool() {
                   <small>Burned, 30 days</small>
                   <b>{n0(burn.degraded30)}</b>
                 </div>
-                <div title="Domains in the at-risk band now, plus the weekly average for the rest of the active domains over the next 30 days.">
-                  <small>Expected, next 30 days</small>
-                  <b>
-                    {n0(burn.predicted30.total)} <span className="m">({n0(burn.predicted30.atRisk)} in the at-risk band)</span>
-                  </b>
-                </div>
-                <div title="Average number of different customers sending from one domain on one day, last 7 days. Higher means one bad list hurts any domain less.">
-                  <small>Mixing</small>
-                  <b>{burn.dilution === null ? "n/a" : `${burn.dilution.toFixed(1)} customers a domain`}</b>
-                </div>
-                <div>
-                  <small>Mixing level</small>
-                  <b style={{ color: burn.dilution !== null && burn.dilution < 2 ? "var(--bad)" : undefined }}>{titleCase(burn.dilutionRegime)}</b>
-                </div>
               </div>
               <Burn weekly={burn.weekly} />
             </div>
@@ -229,7 +215,7 @@ export default function AdminPool() {
               <div className="stack" style={{ marginTop: 12 }}>
                 {PIPE.map(([k, l]) => (
                   <div className="kv" key={k}>
-                    <span>{l}</span>
+                    <span>{k === "aging" ? `Aging (${t.agingDays} quiet days)` : l}</span>
                     <b>{n0(shelf.pipeline[k] ?? 0)}</b>
                   </div>
                 ))}

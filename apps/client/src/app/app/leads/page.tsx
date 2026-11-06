@@ -18,8 +18,10 @@ import {
   useDailyQuery,
   useExcludeFromBatchMutation,
   useImportContactsMutation,
+  useLaunchViewQuery,
   useNavCountsQuery,
   useRestoreContactMutation,
+  useAudienceListQuery,
 } from "@/store/api";
 import { REPLY_LABEL, REPLY_TONE, ago, clock, dateLong, dateTime, n0, placeOf, titleCase, when } from "@/lib/format";
 import type { Batch, Contact } from "@/lib/types";
@@ -394,6 +396,10 @@ function WeekReview({ open }: { open: (id: string) => void }) {
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [approve, approveState] = useApproveBatchMutation();
   const [exclude, excludeState] = useExcludeFromBatchMutation();
+  const { data: launch } = useLaunchViewQuery();
+  // In "approve the first 20" mode, weekly lists open only after the first approval; approving a week first would
+  // leave the first batch empty and nothing could ever send.
+  const firstPending = !!launch && launch.launchMode === "APPROVE_FIRST_BATCH" && !launch.approved;
 
   if (isError) return <ErrorState error={error} onRetry={refetch} />;
   if (isLoading) return <SkeletonRows rows={4} />;
@@ -408,7 +414,7 @@ function WeekReview({ open }: { open: (id: string) => void }) {
 
   const st = current.stats;
   // The server approves a week while it is still being filled too, so the customer never has to wait for sourcing.
-  const approvable = canManage && (current.status === "REVIEW" || current.status === "SOURCING");
+  const approvable = canManage && !firstPending && (current.status === "REVIEW" || current.status === "SOURCING");
   const toggle = (id: string) =>
     setExcluded((s) => {
       const n = new Set(s);
@@ -428,6 +434,11 @@ function WeekReview({ open }: { open: (id: string) => void }) {
           ))}
         </Select>
         <span className="grow" />
+        {firstPending && canManage ? (
+          <Link className="btn btn-primary btn-sm" href="/app/approve">
+            Approve your first people first
+          </Link>
+        ) : null}
         {approvable ? (
           <>
             <Button
@@ -455,7 +466,7 @@ function WeekReview({ open }: { open: (id: string) => void }) {
                 approve({ id: current.id, excludeContactIds: [...excluded] })
                   .unwrap()
                   .then((r) => {
-                    toast(`Approved ${n0(r.approved)} leads. About ${n0(r.perDay)} go out each working day.`, "good");
+                    toast(`Approved ${n0(r.approved)} ${r.approved === 1 ? "lead" : "leads"}. About ${n0(r.perDay)} go out each working day.`, "good");
                     setExcluded(new Set());
                   })
                   .catch((e) => toast(errorMessage(e), "bad"))
@@ -469,7 +480,8 @@ function WeekReview({ open }: { open: (id: string) => void }) {
       <div className="stats4 glass">
         <div className="stat">
           <div className="big num">{n0(st.sendable)}</div>
-          <div className="sub">Ready to send</div>
+          <div className="sub">People this week</div>
+          {st.written != null && st.written < st.sendable ? <div className="sub">{n0(st.written)} emails written, the rest are being written</div> : null}
         </div>
         <div className="stat">
           <div className="big num">{n0(st.excluded)}</div>
@@ -639,9 +651,112 @@ function Today({ open }: { open: (id: string) => void }) {
   );
 }
 
+/**
+ * The whole funnel in one line, so the dashboard's audience list and this page's leads read as one story: everyone
+ * found by the free search, how many had their email looked up, how many have one that works (the leads below), and
+ * how many still wait for their turn.
+ */
+function Funnel({ onAudience }: { onAudience: () => void }) {
+  const { data } = useAudienceListQuery({ page: 1 });
+  if (!data || !data.counts.found) return null;
+  const c = data.counts;
+  const step = (n: number, label: string, hint: string, cls = "") => (
+    <div className={`ld-step ${cls}`} title={hint}>
+      <b>{n0(n)}</b>
+      <span>{label}</span>
+    </div>
+  );
+  return (
+    <div className="ld-funnel" role="group" aria-label="How people move from your audience list to your leads">
+      {step(c.found, "Found", "Everyone the free search saved who fits your audiences. No email yet.")}
+      <i aria-hidden="true">→</i>
+      {step(c.lookedUp, "Emails looked up", "We look up emails a few at a time, only as your daily budget can email them.")}
+      <i aria-hidden="true">→</i>
+      {step(c.withEmail, "With a working email", "These are your leads: checked, and written to.", "is-key")}
+      <span className="ld-rest">
+        {n0(c.waiting)} waiting in your audience list{c.noEmail ? ` · ${n0(c.noEmail)} had no email we could find` : ""} ·{" "}
+        <button type="button" className="btn-link" onClick={onAudience}>
+          See them
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/** Everyone the free search saved, waiting ones first, best fit first. Emails are looked up when their turn comes. */
+function AudienceTab() {
+  const { params, set } = useParams();
+  const [search, setSearch] = useState(params.get("q") ?? "");
+  const q = useDebounced(search, 350);
+  const status = (params.get("astatus") ?? "") as "" | "WAITING" | "PULLED";
+  const page = Number(params.get("page") ?? 1) || 1;
+  const { data, isLoading, isFetching, isError, error, refetch } = useAudienceListQuery({ page, status: status || undefined, q: q || undefined });
+  return (
+    <>
+      <div className="toolbar">
+        <input className="input sm grow" placeholder="Search name, title or company" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search the audience list" />
+        <Select className="select" value={status} onChange={(e) => set({ astatus: e.target.value || null, page: null })} aria-label="Show">
+          <option value="">Everyone</option>
+          <option value="WAITING">Waiting for their turn</option>
+          <option value="PULLED">Email looked up</option>
+        </Select>
+      </div>
+      <div className="tbl-wrap glass" style={{ opacity: isFetching && !isLoading ? 0.7 : 1 }}>
+        {isError ? (
+          <ErrorState error={error} onRetry={refetch} />
+        ) : isLoading || !data ? (
+          <SkeletonRows rows={8} />
+        ) : data.rows.length ? (
+          <>
+            <div className="tbl-scroll">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Company</th>
+                    <th>Audience</th>
+                    <th className="right">Fit</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.rows.map((r) => (
+                    <tr key={r.id}>
+                      <td>
+                        <b>{r.fullName ?? (r.source === "maps-site" ? "Published address" : "Unknown name")}</b>
+                        <div className="m">
+                          {r.source === "maps-site" ? "From the business's own website" : (r.title ?? "\u00a0")}
+                          {r.source === "maps" || r.source === "maps-site" ? <span className="ld-src">Google Maps</span> : null}
+                        </div>
+                      </td>
+                      <td>
+                        {r.company ?? "–"}
+                        <div className="m">{[r.companyDomain, r.country].filter(Boolean).join(" · ") || "\u00a0"}</div>
+                      </td>
+                      <td>{r.audience ?? "–"}</td>
+                      <td className="right num">{r.fitScore}</td>
+                      <td>{r.status === "WAITING" ? <span className="chip-s v">Waiting</span> : <span className="chip-s g">Email looked up</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pager page={page} limit={data.pageSize} total={data.total} onPage={(p) => set({ page: String(p) })} />
+          </>
+        ) : (
+          <Empty icon="users" title="Nobody here yet">
+            {q || status ? "Try clearing a filter." : "Your audience list fills as the free search finds people who fit your audiences."}
+          </Empty>
+        )}
+      </div>
+    </>
+  );
+}
+
 function Leads() {
   const { params, set } = useParams();
-  const tab = params.get("tab") ?? (params.get("batch") ? "week" : "week");
+  // Everyone first; a link to one week's list (?batch=) still opens that week.
+  const tab = params.get("tab") ?? (params.get("batch") ? "week" : "all");
   const [importing, setImporting] = useState(false);
   const lead = params.get("lead");
   const open = (id: string) => set({ lead: id });
@@ -670,10 +785,12 @@ function Leads() {
           </Button>
         }
       />
+      <Funnel onAudience={() => set({ tab: "audience", page: null })} />
       <div className="tabs" role="tablist">
         {[
-          ["week", "Week review"],
           ["all", "All leads"],
+          ["week", "Week review"],
+          ["audience", "Audience list"],
           ["today", "Sent by day"],
         ].map(([k, l]) => (
           <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => set({ tab: k, page: null })}>
@@ -681,7 +798,7 @@ function Leads() {
           </button>
         ))}
       </div>
-      {tab === "all" ? <AllLeads open={open} /> : tab === "today" ? <Today open={open} /> : <WeekReview open={open} />}
+      {tab === "all" ? <AllLeads open={open} /> : tab === "audience" ? <AudienceTab /> : tab === "today" ? <Today open={open} /> : <WeekReview open={open} />}
       {lead ? <LeadDrawer id={lead} onClose={() => set({ lead: null })} /> : null}
       {importing ? <ImportModal onClose={() => setImporting(false)} /> : null}
     </>

@@ -3,7 +3,7 @@ import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import { coldEmailPaused, insufficientCredits } from "../../lib/errors.js";
 import { PRICE_PER_EMAIL, REPLY_RESERVE, SEQUENCE_EMAILS, emailsFor, formatPrice, formatUsd, lastsText, peopleFor, type DeciCents } from "../money.js";
-import { LOW_BALANCE_WARN_DAYS } from "../../config/plans.js";
+import { FREE_TRIAL_DECICENTS, LOW_BALANCE_WARN_DAYS } from "../../config/plans.js";
 
 /**
  * The prepaid balance. Every function that moves money lives here, and every one of them runs inside a transaction
@@ -316,7 +316,9 @@ export async function balanceView(orgId: string): Promise<BalanceView> {
   // "Running low" means money is actually being spent: a balance that hasn't started yet is never low.
   const started = !!firstCharge;
   const low = started && runway !== null && runway < LOW_BALANCE_WARN_DAYS;
-  const stage: BalanceView["stage"] = !lastTop ? "unfunded" : emailsLeft === 0 ? "empty" : balance <= REPLY_RESERVE ? "reserve" : !started && topups === 0 ? "trial" : low ? "low" : "ok";
+  // "Free credit" only while the balance is no more than the free credit: a gift or correction on top is just balance.
+  const trial = !started && topups === 0 && balance <= FREE_TRIAL_DECICENTS;
+  const stage: BalanceView["stage"] = !lastTop ? "unfunded" : emailsLeft === 0 ? "empty" : balance <= REPLY_RESERVE ? "reserve" : trial ? "trial" : low ? "low" : "ok";
   return {
     balance: formatUsd(balance),
     balanceDeciCents: balance.toString(),

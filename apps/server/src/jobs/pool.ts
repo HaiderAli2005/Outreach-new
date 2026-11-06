@@ -6,8 +6,9 @@ import { archiveMailboxHistory } from "../domain/sending/inbound.js";
 import { forEachOrg, autopilotOrgs } from "./runner.js";
 import { releaseStaleHolds } from "../domain/credits/index.js";
 import { logSystem } from "../domain/systemLog.js";
+import { runSync as runInboxKitSyncUnlocked } from "../domain/pool/inboxkit/sync.js";
 
-/** The shared pool's scheduled work. None of these spend money. */
+/** The shared pool's scheduled work. Only inboxkit-sync spends money, and only on orders an operator confirmed. */
 export const runPollMailboxes = () => pollMailboxes();
 export const runArchiveMailboxHistory = async () => ({ archived: await archiveMailboxHistory() });
 export const runRetrySoftBounces = () => retrySoftBounces();
@@ -27,6 +28,8 @@ export const runSnapshotPoolMetrics = () => snapshotPoolMetrics();
 export const runRecomputeEwma = async () => ({ ewma: await recomputeEwmaBurn() });
 export const runReorderCheck = () => checkReorderTrigger();
 export const runRetireQuietMailboxes = () => retireQuietMailboxes();
+/** InboxKit: places due order batches, signs new mailboxes in, reads warmup, starts the ladder, cancels retired ones. */
+export const runInboxKitSync = () => runInboxKitSyncUnlocked();
 export const runReleaseStaleHolds = async () => ({ released: await releaseStaleHolds() });
 
 export async function runRiskScores() {

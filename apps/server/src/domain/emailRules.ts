@@ -29,9 +29,22 @@ const BULLET = /^\s*([-*•▪◦]|\d+[.)])\s+/m;
 const BOLD = /\*\*[^*]+\*\*|__[^_]+__/;
 
 const words = (s: string) => s.replace(/\{\{[^}]+\}\}/g, "Name").split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w));
+// Chinese and Japanese are written without spaces: about 2.5 characters make a word.
+const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/gu;
+/** Question marks in every script we write in: Latin ?, full-width ？ (Chinese, Japanese), Arabic ؟. */
+const QMARK = /[?？؟]/g;
 
 export function wordCount(text: string): number {
-  return words(text).length;
+  return words(text).reduce((n, w) => {
+    const cjk = w.match(CJK)?.length ?? 0;
+    return n + (cjk ? Math.max(1, Math.round(cjk / 2.5)) + (w.replace(CJK, "").match(/\p{L}+/gu)?.length ?? 0) : 1);
+  }, 0);
+}
+
+/** First-email length by language: German and Finnish use long compound words, so the same message has fewer of them. */
+export function firstTouchWords(language?: string | null): { min: number; max: number } {
+  if (language === "de" || language === "fi" || language === "ko") return { min: 70, max: 130 };
+  return FIRST_TOUCH_WORDS;
 }
 
 export function bannedPhrase(text: string): string | null {
@@ -40,20 +53,24 @@ export function bannedPhrase(text: string): string | null {
 }
 
 /** First-touch rules. Returns the first rule broken, or null. */
-export function checkFirstTouch(text: string): string | null {
+export function checkFirstTouch(text: string, language?: string | null, allow: (string | null | undefined)[] = []): string | null {
   const t = (text ?? "").trim();
+  // A company named like a website ("THE OUTNET.COM") is a name, not a link: it is left out of the link check.
+  const names = allow.filter((a): a is string => !!a && LINK.test(a));
+  const linkText = names.reduce((acc, n) => acc.split(n).join(" ").replace(new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), " "), t);
   const n = wordCount(t);
-  if (n < FIRST_TOUCH_WORDS.min) return `the first email is ${n} words, under ${FIRST_TOUCH_WORDS.min}`;
-  if (n > FIRST_TOUCH_WORDS.max) return `the first email is ${n} words, over ${FIRST_TOUCH_WORDS.max}`;
-  if (LINK.test(t)) return "a first email may not contain any link";
+  const range = firstTouchWords(language);
+  if (n < range.min) return `the first email is ${n} words, under ${range.min}`;
+  if (n > range.max) return `the first email is ${n} words, over ${range.max}`;
+  if (LINK.test(linkText)) return "a first email may not contain any link";
   if (BULLET.test(t)) return "no bullet points";
   if (BOLD.test(t)) return "no bold text";
   const banned = bannedPhrase(t);
   if (banned) return `banned phrase "${banned}"`;
-  const questions = (t.match(/\?/g) ?? []).length;
+  const questions = (t.match(QMARK) ?? []).length;
   if (questions !== 1) return questions ? "more than one question" : "it must end with one question";
   const lastPara = t.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean).at(-1) ?? "";
-  if (!lastPara.endsWith("?")) return "the one question must come at the end";
+  if (!/[?？؟]$/.test(lastPara)) return "the one question must come at the end";
   return null;
 }
 
@@ -61,7 +78,7 @@ export function checkFirstTouch(text: string): string | null {
 export function checkFollowUp(text: string): string | null {
   const t = (text ?? "").trim();
   if (!t) return "the follow-up is empty";
-  if ((t.match(/\?/g) ?? []).length > 1) return "more than one question";
+  if ((t.match(QMARK) ?? []).length > 1) return "more than one question";
   const banned = bannedPhrase(t);
   return banned ? `banned phrase "${banned}"` : null;
 }
@@ -81,11 +98,16 @@ const VERBS = new Set(
 export function checkSubject(subject: string, contact?: Pick<Contact, "company" | "firstName"> | null): string | null {
   const s = (subject ?? "").trim();
   const w = s.split(/\s+/).filter(Boolean);
-  if (w.length < 2 || w.length > 4) return `has ${w.length} words, it must be 2 to 4`;
-  if (/[?!]/.test(s)) return "has a question mark or exclamation mark";
-  if (/^(re|fwd?)\s*:/i.test(s)) return "pretends to be a reply";
-  if (!/^[\p{Lu}\p{N}]/u.test(s)) return "is not in sentence case";
-  if (s === s.toUpperCase() && /\p{L}{3,}/u.test(s)) return "is in capitals";
+  const cjk = s.match(CJK)?.length ?? 0;
+  if (cjk) {
+    // Chinese and Japanese: a short phrase of about 4 to 20 characters.
+    if (s.length < 4 || s.length > 20) return `has ${s.length} characters, it must be 4 to 20`;
+  } else if (w.length < 2 || w.length > 4) return `has ${w.length} words, it must be 2 to 4`;
+  if (/[?!？！؟]/.test(s)) return "has a question mark or exclamation mark";
+  if (/^(re|fwd?|aw|sv|wg|tr)\s*:/i.test(s)) return "pretends to be a reply";
+  // Scripts without capitals (Arabic, Hebrew, Chinese) pass; a Latin or Cyrillic subject must not start lower case.
+  if (/^\p{Ll}/u.test(s)) return "is not in sentence case";
+  if (/\p{Lu}/u.test(s) && s === s.toUpperCase() && /\p{L}{3,}/u.test(s)) return "is in capitals";
   if (/quick question/i.test(s)) return 'says "quick question"';
   const lower = s.toLowerCase();
   const verb = w.map((x) => x.toLowerCase().replace(/[^\p{L}']/gu, "")).find((x) => VERBS.has(x));
@@ -123,7 +145,7 @@ const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}%.]+/gu, " ");
  *   any other proper name mid-sentence that the research did not establish
  * Returns the offending pieces; empty means clean.
  */
-export function unsupportedClaims(text: string, corpus: ClaimCorpus): string[] {
+export function unsupportedClaims(text: string, corpus: ClaimCorpus, language?: string | null): string[] {
   const body = (text ?? "").replace(/\{\{[^}]+\}\}/g, " ");
   const all = norm(`${corpus.prospect}\n${corpus.customer}`);
   const digitsOnRecord = new Set((all.match(/\d[\d.,]*/g) ?? []).map((d) => d.replace(/[.,]+$/, "").replace(/,/g, "")));
@@ -133,14 +155,21 @@ export function unsupportedClaims(text: string, corpus: ClaimCorpus): string[] {
     if (!digits) continue;
     if (!digitsOnRecord.has(digits)) out.push(m[0].trim());
   }
-  // Proper names that are not at the start of a sentence.
+  // Proper names that are not at the start of a sentence. German capitalises every noun, so there a capital says
+  // nothing about a name: only the numbers are checked (and the fact check that follows reads names in context).
+  if (language === "de") return [...new Set(out)];
   for (const sentence of body.split(/(?<=[.!?:])\s+|\n+/)) {
     const tokens = sentence.trim().split(/\s+/);
     for (let i = 1; i < tokens.length; i++) {
       const raw = tokens[i].replace(/^[("'“]+|[)"'”.,;:!?]+$/g, "");
       if (!/^\p{Lu}/u.test(raw) || COMMON.has(raw) || /^\p{Lu}{1,4}$/u.test(raw)) continue;
       const word = raw.toLowerCase().replace(/'s$/, "");
-      if (!all.includes(word)) out.push(raw);
+      // "AI-driven" is supported when each part is ("AI" in the offer): a compound is not a new name.
+      // Only its capitalised parts can be names; ordinary lower-case parts ("-driven", "-based") are just words.
+      const parts = raw.split(/[-‐–]/).filter((x) => x.length > 0);
+      const named = parts.filter((x) => /^\p{Lu}/u.test(x)).map((x) => x.toLowerCase());
+      const compoundOk = parts.length > 1 && named.length > 0 && named.every((x) => all.includes(x));
+      if (!all.includes(word) && !compoundOk) out.push(raw);
     }
   }
   return [...new Set(out)];

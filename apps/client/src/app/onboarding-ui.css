@@ -50,3 +50,15 @@
 .vb-cta{margin-left:10px}
 .vb-cta .btn{height:38px;padding:0 18px;font-size:13.5px}
 @media (max-width:760px){.vb-cta .btn{height:34px;padding:0 14px;font-size:13px}}
+
+/* ── Smooth motion in onboarding ──
+   Loading shimmers slide a light band with transform (done by the GPU) instead of moving a background image, which
+   repainted every placeholder on every frame. The sticky bar is near-opaque instead of blurring whatever animates
+   under it. A panel flying into the rail is prepared once as its own layer. Same look, no per-frame painting. */
+.sk,.lv-sk,.an-sk,#onboard .kw-sk{position:relative;overflow:hidden;background:rgb(var(--hw) / .05)!important;animation:none!important}
+#onboard .kw-sk{background:rgb(var(--hw) / .07)!important}
+.sk::after,.lv-sk::after,.an-sk::after,#onboard .kw-sk::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgb(var(--hw) / .08),transparent);transform:translateX(-100%);animation:sk-sweep 1.5s cubic-bezier(.4,0,.6,1) infinite;will-change:transform}
+@keyframes sk-sweep{to{transform:translateX(100%)}}
+.vb{background:rgba(15,14,13,.97)!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+.lv-ghost{will-change:transform,opacity;contain:layout paint style}
+@media (prefers-reduced-motion:reduce){.sk::after,.lv-sk::after,.an-sk::after,#onboard .kw-sk::after{animation:none;display:none}}

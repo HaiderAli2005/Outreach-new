@@ -1,0 +1,123 @@
+/*
+ * Light mode, "Cool stone & gold". Loaded last, so these are the light colours everywhere: website, onboarding,
+ * the app and admin. A neutral stone page, pure white cards with a crisp 1px edge, charcoal ink, and one sharp gold
+ * used only for what matters (primary buttons, live numbers, the current step). Dark mode is not touched.
+ *
+ * The other theme-light-*.css files hold the per-component rules; their fixed colours were converted to this same
+ * stone and gold family, so the tokens below and those rules agree.
+ */
+
+html[data-theme="light"],
+html[data-theme="light"] :is(.ap-shell, .shell-bg),
+html[data-theme="light"] #onboard {
+  color-scheme: light;
+  /* channels used for hairlines, hovers, wells and shadows: neutral, not brown */
+  --tw: 40 42 48;
+  --hw: 24 26 30;
+  --shk: 0.3;
+
+  --bg: #f3f3f1;
+  --bg-2: #ffffff;
+  --bg-3: #f7f7f5;
+  --surface: #ffffff;
+  --surface-2: #f7f7f5;
+  --field: #ffffff;
+  --hair: #e4e4e0;
+  --hair-2: #d2d2cc;
+  --line: rgb(17 18 20 / 0.09);
+  --line-2: rgb(17 18 20 / 0.15);
+
+  --ink: #111214;
+  --ink-2: #3d4047;
+  --ink-3: #5f636b;
+  --ink-4: #8a8e96;
+
+  /* gold: --gold is text-safe on white (about 4.9:1); the gradient is for filled buttons and bars */
+  --gold: #9a6c05;
+  --gold-2: #8d6304;
+  --gold-deep: #7a5503;
+  --gold-soft: rgb(184 134 11 / 0.1);
+  --gold-line: rgb(184 134 11 / 0.45);
+  --gold-text: linear-gradient(180deg, #a87708 0%, #7a5503 100%);
+  --grad: linear-gradient(180deg, #f3c447 0%, #d39a12 100%);
+  --on-gold: #17120a;
+
+  --good: #1f7a4d;
+  --warn: #a16a00;
+  --bad: #c0391f;
+
+  --data: #b8860b;
+  --chart-1: #c4900e;
+  --chart-2: #5b63d6;
+
+  --pane: rgb(255 255 255 / 0.82);
+  --glass-fill: linear-gradient(180deg, #ffffff, #fafaf9);
+  --paper: 0 1px 2px rgb(16 18 24 / 0.05), 0 10px 26px -16px rgb(16 18 24 / 0.16);
+  --dots-gold: radial-gradient(rgb(184 134 11 / 0.5) 1.1px, transparent 1.7px);
+}
+
+/* page canvas, every surface */
+html[data-theme="light"] body,
+html[data-theme="light"]:has(#landing),
+html[data-theme="light"]:has(#landing) body {
+  --bg: #f3f3f1;
+  background: #f3f3f1;
+}
+
+/* the app frame: a slightly deeper stone sidebar and a frosted stone top bar, white cards in the middle */
+html[data-theme="light"] .ap-shell { background: var(--bg); }
+html[data-theme="light"] .ap-shell .ap-main {
+  background: radial-gradient(1100px 420px at 50% -260px, rgb(212 154 18 / 0.07), transparent 70%), var(--bg);
+}
+html[data-theme="light"] .ap-shell .ap-rail { background: #ececea; border-right-color: var(--hair); }
+html[data-theme="light"] .ap-shell .ap-top { background: rgb(243 243 241 / 0.86); border-bottom-color: var(--hair); }
+
+/* onboarding canvas and bar, the same as the app */
+html[data-theme="light"] #onboard.lv-app:not(.is-auth),
+html[data-theme="light"] #onboard:not(.is-auth) {
+  background: radial-gradient(1100px 420px at 50% -260px, rgb(212 154 18 / 0.07), transparent 70%), var(--bg) !important;
+}
+html[data-theme="light"] #onboard .vb { background: rgb(243 243 241 / 0.86) !important; }
+@media (max-width: 899px) {
+  html[data-theme="light"] #onboard .lv-rail { background: rgb(243 243 241 / 0.92) !important; }
+}
+
+/* ---------- website hero: a clean stone sky with one soft gold light behind the headline ---------- */
+html[data-theme="light"] #landing .hero {
+  background: radial-gradient(760px 340px at 50% -60px, rgb(212 154 18 / 0.08), transparent 70%) !important;
+}
+html[data-theme="light"] #landing .hero-sky {
+  background: radial-gradient(46% 38% at 50% 0%, rgb(212 154 18 / 0.1), transparent 72%) !important;
+  opacity: 1;
+}
+/* the domain search: a white field in a crisp white frame, no grey film */
+html[data-theme="light"] #landing .sring {
+  --glass-fill: #ffffff;
+  background: #ffffff !important;
+  box-shadow: inset 0 0 0 1px var(--hair), 0 1px 2px rgb(16 18 24 / 0.05), 0 28px 56px -28px rgb(16 18 24 / 0.22) !important;
+}
+html[data-theme="light"] #landing .sring::before,
+html[data-theme="light"] #landing .sring::after { background: none !important; }
+html[data-theme="light"] #landing .sbar {
+  background: var(--surface-2) !important;
+  box-shadow: inset 0 0 0 1px var(--hair-2) !important;
+}
+html[data-theme="light"] #landing .sbar:focus-within {
+  background: #ffffff !important;
+  box-shadow: inset 0 0 0 1px var(--gold-line), 0 0 0 4px rgb(212 154 18 / 0.14) !important;
+}
+html[data-theme="light"] #landing .sbar input { color: var(--ink); }
+html[data-theme="light"] #landing .sbar input::placeholder { color: var(--ink-4); }
+html[data-theme="light"] #landing .sring .proof { color: var(--ink-3); }
+
+/* every gold call to action is the same sharp gold: Analyze, Open app, and the primary buttons */
+html[data-theme="light"] #landing :is(.sbar-go, .nav-cta .nav-open),
+html[data-theme="light"] :is(#landing, #onboard, .ap-shell) .btn-primary {
+  background: var(--grad) !important;
+  color: var(--on-gold) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.5), 0 0 0 1px rgb(168 119 8 / 0.55), 0 6px 16px -8px rgb(168 119 8 / 0.55) !important;
+}
+html[data-theme="light"] #landing :is(.sbar-go, .nav-cta .nav-open):hover,
+html[data-theme="light"] :is(#landing, #onboard, .ap-shell) .btn-primary:hover:not(:disabled) {
+  filter: brightness(1.04) saturate(1.05);
+}

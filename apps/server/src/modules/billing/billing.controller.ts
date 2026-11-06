@@ -41,6 +41,14 @@ export async function setup(req: Request, res: Response) {
   return ok(res, await service.startSetup(ctx(req).orgId, currentUser(req).email, purpose, key));
 }
 
+/** Sends the customer to Stripe's hosted page to save a card. Returns the URL to redirect to. */
+export async function cardCheckout(req: Request, res: Response) {
+  const key = req.get("idempotency-key") ?? "";
+  if (!/^[\w-]{8,100}$/.test(key)) throw badRequest("An Idempotency-Key header is required");
+  const { returnPath, cancelPath } = parseBody(req, z.object({ returnPath: z.string().max(300), cancelPath: z.string().max(300) }));
+  return ok(res, await service.startCardCheckout(ctx(req).orgId, currentUser(req).email, returnPath, cancelPath, key));
+}
+
 export async function removeCard(req: Request, res: Response) {
   return ok(res, await service.removeCard(ctx(req).orgId));
 }

@@ -36,7 +36,7 @@ export async function activateNow(domainId: string, operator: { id: string; emai
     null,
     "CRITICAL",
     "pool",
-    `${operator.email} promoted ${d.name} to active early, from ${d.status === "AGING" ? "its quiet month" : `warmup day ${fromDay}`}: ${reason}`,
+    `${operator.email} promoted ${d.name} to active early, from ${d.status === "AGING" ? "its quiet aging period" : `warmup day ${fromDay}`}: ${reason}`,
     { domainId: d.id, operatorId: operator.id, fromDay, bounce7: Number(rate.toFixed(4)) },
   );
   return { domain: d.name, fromDay, bounce7: Number(rate.toFixed(4)) };

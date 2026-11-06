@@ -9,7 +9,7 @@ export const logger = pino({
     level: (label) => ({ severity: label.toUpperCase() }),
   },
   redact: {
-    paths: ["req.headers.authorization", "req.headers.cookie", "*.password", "*.passwordHash", "*.apiKey"],
+    paths: ["req.headers.authorization", "req.headers.cookie", 'req.headers["x-inboxkit-signature"]', "*.password", "*.passwordHash", "*.apiKey"],
     censor: "[redacted]",
   },
   transport: !isProd && !isTest ? { target: "pino-pretty", options: { colorize: true, messageKey: "message" } } : undefined,

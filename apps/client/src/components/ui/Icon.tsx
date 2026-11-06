@@ -2,7 +2,7 @@ export type IconId =
   | "arr" | "check" | "globe" | "shield" | "key" | "flame" | "rotate" | "plus" | "minus" | "x" | "lock" | "inbox" | "alert"
   | "back" | "plane" | "sparkle" | "chev" | "pin" | "at" | "search" | "home" | "users" | "target" | "ban" | "gear" | "card"
   | "pulse" | "logout" | "menu" | "download" | "upload" | "power" | "calendar" | "list" | "building" | "link"
-  | "store" | "factory" | "coins" | "truck" | "megaphone" | "heart" | "cpu" | "briefcase" | "page" | "sliders"
+  | "store" | "factory" | "coins" | "gift" | "truck" | "megaphone" | "heart" | "cpu" | "briefcase" | "page" | "sliders"
   | "st-user" | "st-scan" | "st-mail" | "st-gauge" | "st-card" | "st-send";
 
 export function Icon({ id, className }: { id: IconId; className?: string }) {
@@ -74,6 +74,7 @@ const SPRITE = `
 <symbol id="st-send" viewBox="0 0 24 24"><path d="M20.5 3.5L3.5 10.2l6.6 2.6 2.6 6.7 7.8-16zM10.1 12.8l4.4-4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></symbol>
 <symbol id="i-store" viewBox="0 0 24 24"><g ${S}><path d="M4 9.5l1.4-5h13.2l1.4 5M4 9.5h16M4 9.5a2.7 2.7 0 005.3 0 2.7 2.7 0 005.4 0 2.7 2.7 0 005.3 0"/><path d="M5.5 12v8h13v-8M10 20v-4.5h4V20"/></g></symbol>
 <symbol id="i-factory" viewBox="0 0 24 24"><g ${S}><path d="M3.5 20.5V11l5 3v-3l5 3v-3l5 3V4.5h2v16z"/><path d="M3.5 20.5h17M7.5 17.5h2M12 17.5h2"/></g></symbol>
+<symbol id="i-gift" viewBox="0 0 24 24"><g ${S}><rect x="3.5" y="8" width="17" height="4" rx="1"/><path d="M5 12v7.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V12"/><path d="M12 8v12.5"/><path d="M12 8C10.5 5 7 4.5 7 6.5S10 8 12 8Z"/><path d="M12 8c1.5-3 5-3.5 5-1.5S14 8 12 8Z"/></g></symbol>
 <symbol id="i-coins" viewBox="0 0 24 24"><g ${S}><ellipse cx="9" cy="7" rx="5.5" ry="2.5"/><path d="M3.5 7v4c0 1.4 2.5 2.5 5.5 2.5s5.5-1.1 5.5-2.5V7"/><path d="M9.5 16.5c.9.3 2 .5 3.5.5 3 0 5.5-1.1 5.5-2.5v-4c0-1.1-1.5-2-3.6-2.3"/><path d="M18.5 14.5v4c0 1.4-2.5 2.5-5.5 2.5s-5.5-1.1-5.5-2.5v-2"/></g></symbol>
 <symbol id="i-truck" viewBox="0 0 24 24"><g ${S}><path d="M2.5 6.5h11v10h-11zM13.5 10h4l3 3.5v3h-7"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></g></symbol>
 <symbol id="i-megaphone" viewBox="0 0 24 24"><g ${S}><path d="M4 10v4a1.5 1.5 0 001.5 1.5H7l5 4v-15l-5 4H5.5A1.5 1.5 0 004 10z"/><path d="M16 9a4 4 0 010 6M18.5 6.5a7.5 7.5 0 010 11"/></g></symbol>

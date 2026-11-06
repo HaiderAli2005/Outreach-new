@@ -4,7 +4,7 @@ import { CostSection } from "./CostStack";
 import type { ReactNode } from "react";
 import { money, n0 } from "@/lib/format";
 import type { AdminPoolView } from "@/lib/types";
-import { BarChart, Bullet, Donut, HBars, Legend, LineChart, Meter, RAMP, StackBar, TONE } from "./charts";
+import { BarChart, Donut, HBars, Legend, LineChart, Meter, RAMP, StackBar, TONE } from "./charts";
 import { exact, Figures, Hero, Kpi, Panel, plural, Section, Verdict, type Tone } from "./poolParts";
 import { ShelfSection } from "./PoolShelf";
 
@@ -26,7 +26,15 @@ const REASON: Record<AdminPoolView["burned"][number]["reasonKind"], string> = {
   other: "Other",
 };
 
-const SHARE_COLORS = [TONE.gold, RAMP.m1, TONE.ink2, RAMP.m3, TONE.ink3];
+/**
+ * The three lines on "Last 30 days", one hue each. Checked together on the dark panel surface for lightness,
+ * chroma, colour-blind separation and contrast; the brand gold itself is too pale to pass as a line colour.
+ */
+const SENT_COLOR = "#c98500";
+const CAPACITY_COLOR = "#3987e5";
+const ASKED_COLOR = "#d55181";
+
+const SHARE_COLORS =[TONE.gold, RAMP.m1, TONE.ink2, RAMP.m3, TONE.ink3];
 
 export function PoolGraphs({ data }: { data: AdminPoolView }) {
   const { charts, capacity, burn, shelf, atRisk, unmatched, footprint, authentication } = data;
@@ -64,16 +72,21 @@ export function PoolGraphs({ data }: { data: AdminPoolView }) {
       ];
   const sentDays = daily.filter((d) => d.sends > 0);
   const avgSent = sentDays.length ? Math.round(sentDays.reduce((a, d) => a + d.sends, 0) / sentDays.length) : 0;
+  // The 30 days in one read: how capacity moved, and on how many days customers asked for more than it could send.
+  const caps = daily.map((d) => d.capacity).filter((v): v is number => v !== null);
+  const capFrom = caps.find((v) => v > 0) ?? caps[0] ?? null;
+  const capTo = caps.length ? caps[caps.length - 1] : null;
+  const shortDays = daily.filter((d) => d.capacity !== null && d.committed !== null && d.committed > d.capacity).length;
   const usedToday = capacity.total ? capacity.sentToday / capacity.total : 0;
 
   // ── burn ──
   const weeks = burn.weekly.slice(-12);
-  const ewma = charts.ewma.slice(-12);
   const weekLabels = weeks.map((_, i) => {
     const back = weeks.length - 1 - i;
     return back === 0 ? "This wk" : dayLabel(new Date(new Date(data.cachedAt).getTime() - back * 7 * 86_400_000).toISOString().slice(0, 10));
   });
-  const burnTone: Tone = impact.mailboxes === 0 ? "good" : "warn";
+  // Anything burned now, in the last 30 days, or in the weeks the chart covers.
+  const anyBurn = impact.mailboxes > 0 || impact.domains > 0 || burn.degraded30 > 0 || weeks.some((w) => w > 0);
   const burnVerdict =
     impact.mailboxes === 0
       ? "Nothing is burned right now."
@@ -109,12 +122,19 @@ export function PoolGraphs({ data }: { data: AdminPoolView }) {
   // ── health ──
   const red = atRisk.filter((r) => r.risk >= 0.7).length;
   const amber = atRisk.length - red;
-  const healthTone: Tone = red ? "bad" : amber ? "warn" : "good";
-  const healthVerdict = red
-    ? `${plural(red, "domain")} in the at-risk band, ${n0(amber)} more to watch.`
-    : amber
-      ? `No domain in the at-risk band. ${plural(amber, "domain")} to watch.`
-      : "No domain scores as at risk.";
+  // Health is the bad-email rate. Domains on the way to burning are shown, and judged, in the Burned section.
+  const healthTone: Tone = bad30 === null ? "good" : badTone(bad30) ?? "good";
+  const healthVerdict =
+    bad30 === null ? "Nothing sent in the last 30 days." : bad30 >= 0.05 ? `Bad emails at ${exact(bad30)}, above 5%.` : bad30 >= 0.03 ? `Bad emails at ${exact(bad30)}, above 3%.` : `Bad emails at ${exact(bad30)}, under 3%.`;
+  // The Burned section answers two things: what has burned, and what is on the way.
+  const burnedSectionTone: Tone = impact.mailboxes || red ? "bad" : amber ? "warn" : "good";
+  const burnedSectionVerdict = impact.mailboxes
+    ? `${burnVerdict}${red ? ` ${plural(red, "more domain")} on the way.` : ""}`
+    : red
+      ? `Nothing burned. ${plural(red, "domain")} on the way to burning, ${n0(amber)} more to watch.`
+      : amber
+        ? `Nothing burned. ${plural(amber, "domain")} to watch.`
+        : "Nothing is burned and no domain is close.";
 
   // ── the rest ──
   const live = Object.entries(dm).reduce((a, [k, v]) => a + (k === "RETIRED" ? 0 : v), 0);
@@ -284,69 +304,62 @@ export function PoolGraphs({ data }: { data: AdminPoolView }) {
             title="Last 30 days"
             hint="sent against capacity"
             read={
-              avgSent ? (
-                <>
-                  The pool sent <b>{n0(avgSent)} a day</b> on the days it sent anything. The dashed line is what it can send, the dotted line is what customers asked for, so the space between them is room for new
-                  customers.
-                </>
+              capTo === null ? (
+                "No capacity was recorded in the last 30 days."
               ) : (
-                "Nothing has been sent in the last 30 days."
+                <>
+                  {capFrom !== null && capFrom !== capTo ? (
+                    <>
+                      Capacity went from <b>{n0(capFrom)}</b> to <b>{n0(capTo)} a day</b>.{" "}
+                    </>
+                  ) : (
+                    <>
+                      Capacity held at <b>{n0(capTo)} a day</b>.{" "}
+                    </>
+                  )}
+                  {shortDays ? (
+                    <>
+                      Customers asked for more than it could send on <b>{plural(shortDays, "day")}</b>.{" "}
+                    </>
+                  ) : (
+                    "It covered what customers asked for every day. "
+                  )}
+                  {avgSent ? <>On days it sent, it sent {n0(avgSent)} a day.</> : "Nothing was sent."}
+                </>
               )
             }
           >
             <LineChart
               labels={labels}
-              endLabel
+              endLabels
               series={[
-                {
-                  key: "sends",
-                  label: "Sent",
-                  color: TONE.gold,
-                  values: daily.map((d) => d.sends),
-                  area: true,
-                },
-                {
-                  key: "capacity",
-                  label: "Capacity",
-                  color: TONE.ink3,
-                  values: daily.map((d) => d.capacity),
-                  ref: true,
-                },
-                {
-                  key: "committed",
-                  label: "Asked for",
-                  color: TONE.ink4,
-                  values: daily.map((d) => d.committed),
-                  ref: true,
-                },
+                // Sent last so its line and area draw on top of the other two.
+                // Levels move in steps (a domain goes live, a customer launches), so they are drawn as steps, not slopes.
+                { key: "capacity", label: "Capacity", color: CAPACITY_COLOR, values: daily.map((d) => d.capacity), step: true },
+                { key: "committed", label: "Asked for", color: ASKED_COLOR, values: daily.map((d) => d.committed), step: true },
+                { key: "sends", label: "Sent", color: SENT_COLOR, values: daily.map((d) => d.sends), area: true },
               ]}
               counts
               empty="No emails sent in the last 30 days."
             />
             <Legend
               items={[
-                { label: "Sent", color: TONE.gold },
-                { label: "Capacity", color: TONE.ink3, dashed: true },
-                {
-                  label: "Customers asked for",
-                  color: TONE.ink4,
-                  dashed: true,
-                },
+                { label: "Sent", color: SENT_COLOR },
+                { label: "Capacity", color: CAPACITY_COLOR },
+                { label: "Customers asked for", color: ASKED_COLOR },
               ]}
             />
           </Panel>
         </div>
-      </Section>
-
-      <Section title="Burned" verdict={<Verdict tone={burnTone}>{burnVerdict}</Verdict>}>
+        {/* What the pool is made of decides what it can send, so it lives with capacity, not under "Burned". */}
         <Panel
           title="What the pool is made of"
           hint={`${plural(allBoxes, "mailbox", "mailboxes")}`}
           read={
             allBoxes ? (
               <>
-                <b>{n0(canSend)}</b> of {n0(allBoxes)} mailboxes can send. {n0(mb.REPLIES_ONLY)} {mb.REPLIES_ONLY === 1 ? "is" : "are"} burned and only carry replies, {exact(burnedShare)} of everything in
-                service.
+                <b>{n0(canSend)}</b> of {n0(allBoxes)} mailboxes can send (sending or warming up).
+                {mb.CONNECTING + mb.ERROR ? ` ${n0(mb.CONNECTING + mb.ERROR)} ${mb.CONNECTING + mb.ERROR === 1 ? "is" : "are"} still being set up.` : ""}
               </>
             ) : (
               "No mailboxes yet."
@@ -364,52 +377,110 @@ export function PoolGraphs({ data }: { data: AdminPoolView }) {
               { label: "Retired", value: mb.RETIRED, color: TONE.ink4, note: "switched off" },
             ]}
           />
+          <h4 className="pg-sub">Domains by stage</h4>
+          <Meter
+            parts={[
+              { label: "Aging", value: dm.AGING + dm.REGISTERED, color: RAMP.m3 },
+              { label: "Warming", value: dm.WARMING, color: RAMP.m2 },
+              { label: "Active", value: dm.ACTIVE, color: RAMP.m1 },
+              { label: "Burned", value: dm.DEGRADED, color: TONE.bad },
+              { label: "Retired", value: dm.RETIRED, color: TONE.ink4 },
+            ]}
+            total={0}
+          />
         </Panel>
-        <div className="pg-row c2">
-          <Panel
-            title="What burned mailboxes still carry"
-            hint="right now"
-            read={
-              impact.mailboxes ? (
-                <>
-                  Burned mailboxes took away about <b>{n0(impact.capacityLost)} emails a day</b> of capacity and still cost <b>{money(impact.monthlyCostCents)} a month</b>, while holding {plural(impact.liveConversations, "live conversation")}{" "}
-                  that cannot be moved.
-                </>
-              ) : (
-                "Nothing is burned, so nothing is being paid for or held."
-              )
-            }
-          >
-            <Figures
-              items={[
-                {
-                  label: "Capacity lost, a day",
-                  value: n0(impact.capacityLost),
-                  tone: impact.capacityLost ? "bad" : undefined,
-                },
-                {
-                  label: "We still pay a month",
-                  value: money(impact.monthlyCostCents),
-                  tone: impact.monthlyCostCents ? "warn" : undefined,
-                },
-                {
-                  label: "Live conversations",
-                  value: n0(impact.liveConversations),
-                  tone: impact.liveConversations ? "warn" : undefined,
-                },
-                {
-                  label: "Follow-ups still going",
-                  value: n0(impact.sequencesRunning),
-                },
-                {
-                  label: "Customers affected",
-                  value: n0(impact.customersAffected),
-                },
-                { label: "Burned domains", value: n0(impact.domains) },
+      </Section>
+
+      {/* Only burned things live here. With nothing burned there is one plain sentence, not a wall of zeros. */}
+      <Section title="Burned" verdict={<Verdict tone={burnedSectionTone}>{burnedSectionVerdict}</Verdict>}>
+        <Panel
+          title="On the way to burning"
+          hint="risk score from 0 (safe) to 1, not a forecast"
+          read={
+            atRisk.length ? (
+              <>
+                <b>{plural(red, "domain")}</b> {red === 1 ? "sits" : "sit"} in the at-risk band (0.7 or more): check {red === 1 ? "it" : "them"} first.{" "}
+                {amber ? `${n0(amber)} more ${amber === 1 ? "is" : "are"} in the watch band (0.4 to 0.7).` : "Nothing else is close."} The score mixes this week&apos;s bounces and complaints with how fast they are rising.
+              </>
+            ) : (
+              "No domain is on the way to burning."
+            )
+          }
+        >
+          {atRisk.length ? (
+            <HBars
+              mono
+              rows={atRisk.slice(0, 8).map((r) => ({
+                label: r.domain,
+                value: r.risk,
+                color: r.risk >= 0.7 ? TONE.bad : TONE.warn,
+                note: `${r.bounce7} bounces and complaints this week · ${r.band}`,
+              }))}
+              max={1}
+              format={(v) => v.toFixed(2)}
+              markers={[
+                { value: 0.4, label: "Watch", color: TONE.warn },
+                { value: 0.7, label: "At risk", color: TONE.bad },
               ]}
             />
-            <p className="pg-note">A burned mailbox stops new cold email but keeps answering everyone already talking to it, so no conversation is lost. It is billed until it retires.</p>
+          ) : (
+            <p className="pg-empty">Every scored domain is healthy. Domains with fewer than 200 emails in 30 days are not scored yet.</p>
+          )}
+        </Panel>
+        {!anyBurn ? (
+          <Panel title="Nothing has burned" hint="last 12 weeks">
+            <p className="pg-empty">
+              No mailbox or domain has burned in the last 12 weeks. A burned mailbox stops new cold email and only answers people already talking to it. When one burns, this section shows each burned
+              domain with the conversations it still carries, what it costs, why it burned and how many burn each week.
+            </p>
           </Panel>
+        ) : (
+        <>
+        <Panel
+          title="Burned domains still carrying conversations"
+          hint="right now"
+          read={
+            impact.byDomain.length ? (
+              <>
+                These burned mailboxes send no new cold email but still answer the people below, so those conversations are never lost. Each burned mailbox is billed until it retires.
+              </>
+            ) : (
+              "No burned mailbox is carrying a conversation right now."
+            )
+          }
+        >
+          {impact.byDomain.length ? (
+            <div className="tbl-scroll">
+              <table className="tbl cs-tbl">
+                <thead>
+                  <tr>
+                    <th>Domain</th>
+                    <th>Burned on</th>
+                    <th className="right">Burned mailboxes</th>
+                    <th className="right">Live conversations</th>
+                    <th className="right">Follow-ups still going</th>
+                    <th className="right">Customers</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {impact.byDomain.map((d) => (
+                    <tr key={d.domain}>
+                      <td className="mono">
+                        {d.domain}
+                        {d.domainBurned ? null : <small> mailbox only, domain still sending</small>}
+                      </td>
+                      <td>{d.burnedOn ? dayLabel(d.burnedOn.slice(0, 10)) : "–"}</td>
+                      <td className="right mono">{n0(d.mailboxes)}</td>
+                      <td className={`right mono${d.liveConversations ? " bad" : ""}`}>{n0(d.liveConversations)}</td>
+                      <td className="right mono">{n0(d.sequencesRunning)}</td>
+                      <td className="right mono">{n0(d.customers)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </Panel>
           <Panel
             title="Why they burned"
             hint="last 30 days"
@@ -424,79 +495,35 @@ export function PoolGraphs({ data }: { data: AdminPoolView }) {
             }
           >
             {reasons.some((r) => r.value) ? <HBars rows={reasons.map((r) => ({ ...r, color: TONE.bad }))} /> : <p className="pg-empty">No domain burned in the last 30 days.</p>}
-            <h4 className="pg-sub">Domains by stage</h4>
-            <Meter
-              parts={[
-                {
-                  label: "Aging",
-                  value: dm.AGING + dm.REGISTERED,
-                  color: RAMP.m3,
-                },
-                { label: "Warming", value: dm.WARMING, color: RAMP.m2 },
-                { label: "Active", value: dm.ACTIVE, color: RAMP.m1 },
-                { label: "Burned", value: dm.DEGRADED, color: TONE.bad },
-                { label: "Retired", value: dm.RETIRED, color: TONE.ink4 },
-              ]}
-              total={0}
-            />
           </Panel>
-        </div>
         <Panel
           title="Domains burned per week"
-          hint={`${n0(burn.predicted30.total)} expected in the next 30 days`}
+          hint="what actually burned"
           read={
-            burn.ewmaWeeklyBurn && runwayText ? (
+            burn.degraded30 ? (
               <>
-                Burn averages <b>{burn.ewmaWeeklyBurn.toFixed(1)} a week</b>. At that rate the {plural(spares, "spare domain")} {spares === 1 ? "lasts" : "last"} <b>{runwayText} weeks</b>, against the roughly {lead} weeks a
-                new domain needs to be ready.
+                <b>{plural(burn.degraded30, "domain")}</b> burned in the last 30 days{burn.degraded7 ? <>, {n0(burn.degraded7)} of them this week</> : ", none this week"}.
               </>
             ) : (
-              "No domain has burned yet, so there is no burn rate to project."
+              "No domain burned in the last 30 days."
             )
           }
         >
           <Figures
-            cols={4}
+            cols={3}
             items={[
               { label: "Burn rate, 30 days", value: exact(burnRate30), tone: burnRate30 >= 0.2 ? "bad" : burnRate30 >= 0.1 ? "warn" : "good" },
               { label: "Burned this week", value: n0(burn.degraded7), tone: burn.degraded7 ? "warn" : undefined },
               { label: "Burned in 30 days", value: n0(burn.degraded30) },
-              { label: "Average a week", value: burn.ewmaWeeklyBurn.toFixed(2) },
             ]}
           />
-          <BarChart
-            valueLabels
-            labels={weekLabels}
-            values={weeks}
-            color={TONE.bad}
-            unit="burned"
-            line={ewma.length === weeks.length && weeks.length ? { label: "Running average", values: ewma, color: TONE.ink3 } : undefined}
-            forecast={
-              weeks.length
-                ? {
-                    label: "Next wk",
-                    value: Number(burn.ewmaWeeklyBurn.toFixed(1)),
-                  }
-                : undefined
-            }
-            empty="No domain has burned yet."
-          />
-          <Legend
-            items={[
-              { label: "Burned", color: TONE.bad },
-              { label: "Running average", color: TONE.ink3, dashed: true },
-              {
-                label: "Next week, forecast",
-                color: TONE.bad,
-                dashed: true,
-              },
-            ]}
-          />
+          <BarChart valueLabels labels={weekLabels} values={weeks} color={TONE.bad} unit="burned" empty="No domain has burned yet." />
         </Panel>
+        </>
+        )}
       </Section>
 
       <Section title="Health" verdict={<Verdict tone={healthTone}>{healthVerdict}</Verdict>}>
-        <div className="pg-row c2">
           <Panel
             title="Bad emails, whole pool"
             hint="hard bounces plus complaints counted ten times, per email"
@@ -541,40 +568,6 @@ export function PoolGraphs({ data }: { data: AdminPoolView }) {
               empty="No emails sent in the last 30 days."
             />
           </Panel>
-          <Panel
-            title="Risk by domain"
-            hint="a score from 0 (safe) to 1, not a forecast"
-            read={
-              atRisk.length ? (
-                <>
-                  <b>{plural(red, "domain")}</b> {red === 1 ? "sits" : "sit"} in the at-risk band (0.7 or more). {amber ? `${n0(amber)} more are in the watch band (0.4 to 0.7).` : "Nothing else is close."}
-                </>
-              ) : (
-                "No domain is scored as at risk."
-              )
-            }
-          >
-            {atRisk.length ? (
-              <HBars
-                mono
-                rows={atRisk.slice(0, 8).map((r) => ({
-                  label: r.domain,
-                  value: r.risk,
-                  color: r.risk >= 0.7 ? TONE.bad : TONE.warn,
-                  note: `${r.bounce7} bounces and complaints this week · ${r.band}`,
-                }))}
-                max={1}
-                format={(v) => v.toFixed(2)}
-                markers={[
-                  { value: 0.4, label: "Watch", color: TONE.warn },
-                  { value: 0.7, label: "At risk", color: TONE.bad },
-                ]}
-              />
-            ) : (
-              <p className="pg-empty">No domain is at risk. Domains with fewer than 200 emails in 30 days are not scored yet.</p>
-            )}
-          </Panel>
-        </div>
       </Section>
 
       <ShelfSection data={data} />
@@ -582,52 +575,10 @@ export function PoolGraphs({ data }: { data: AdminPoolView }) {
       <CostSection s={data.economics} />
 
       <Section
-        title="Mixing and safety"
-        verdict={<Verdict tone={burn.dilution !== null && burn.dilution < 10 ? "warn" : "good"}>{burn.dilution === null ? "Not enough sending yet to measure mixing." : `Each domain carries ${burn.dilution.toFixed(1)} customers a day.`}</Verdict>}
+        title="Safety"
+        verdict={<Verdict tone={unverified || unmatched.open ? "warn" : "good"}>{unverified ? `${plural(unverified, "domain")} missing a DNS record` : unmatched.open ? `${plural(unmatched.open, "reply", "replies")} waiting to be matched` : "Every domain authenticated, no reply waiting"}</Verdict>}
       >
-        <div className="pg-row c3">
-          <Panel
-            title="Mixing"
-            hint="customers per domain per day"
-            read={
-              burn.dilution === null ? (
-                "Not enough sending yet to measure how customers are mixed across domains."
-              ) : (
-                <>
-                  Each domain carries <b>{burn.dilution.toFixed(1)} customers a day</b>, which counts as {burn.dilutionRegime.toLowerCase()}. At ten or more, one customer&apos;s bad list is only a small share of any
-                  domain&apos;s mail.
-                </>
-              )
-            }
-          >
-            <div className="pg-big">
-              <b>{burn.dilution === null ? "n/a" : burn.dilution.toFixed(1)}</b>
-              <span>{burn.dilutionRegime}</span>
-            </div>
-            <Bullet
-              value={Math.min(burn.dilution ?? 0, 40)}
-              target={10}
-              targetLabel="10 is working"
-              max={40}
-              format={(v) => v.toFixed(0)}
-              color={TONE.gold}
-              bands={[
-                {
-                  to: 2,
-                  color: "rgba(229,131,111,.28)",
-                  label: "No protection",
-                },
-                { to: 10, color: "rgba(227,178,92,.22)", label: "Weak" },
-                { to: 30, color: "rgba(212,174,114,.14)", label: "Working" },
-                {
-                  to: 40,
-                  color: "rgba(140,203,159,.18)",
-                  label: "Fully mixed",
-                },
-              ]}
-            />
-            <p className="pg-note">More customers on each domain means one bad list hurts any domain less.</p>
-          </Panel>
+        <div className="pg-row c2">
           <Panel
             title="Authentication"
             hint="SPF, DKIM and DMARC"

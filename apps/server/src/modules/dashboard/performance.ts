@@ -31,7 +31,32 @@ interface Totals {
 
 const zero = (): Totals => ({ sent: 0, firstEmails: 0, followUps: 0, delivered: 0, bounced: 0, replies: 0, hot: 0, spentDecicents: 0 });
 
-async function sendsByDay(orgId: string, tz: string, from: Date, to: Date) {
+/** The periods the cockpit offers. "all" runs from the first email ever sent (at most a year). */
+export type Period = "today" | "7d" | "30d" | "all";
+
+/** Narrows sends and replies to one campaign (or audience); "own" is the people the customer uploaded. */
+type Scope = { byAudience: boolean; campaign: string | null };
+const scopeSql = (sc: Scope) =>
+  sc.campaign === null
+    ? Prisma.empty
+    : sc.byAudience
+      ? sc.campaign === "own"
+        ? Prisma.sql` AND c."audienceId" IS NULL`
+        : Prisma.sql` AND c."audienceId" = ${sc.campaign}`
+      : Prisma.sql` AND c."campaignId" = ${sc.campaign}`;
+
+async function sendsByDay(orgId: string, tz: string, from: Date, to: Date, sc: Scope) {
+  if (sc.campaign !== null)
+    return prisma.$queryRaw<{ d: Date; sent: bigint; first: bigint; delivered: bigint; bounced: bigint; spent: bigint | null }[]>`
+      SELECT (s.sent_at AT TIME ZONE 'UTC' AT TIME ZONE ${tz})::date AS d,
+             COUNT(*) FILTER (WHERE ${OUTREACH}) AS sent,
+             COUNT(*) FILTER (WHERE ${OUTREACH} AND s.step = 1) AS first,
+             COUNT(*) FILTER (WHERE ${OUTREACH} AND s.status IN ('SENT','DELIVERED')) AS delivered,
+             COUNT(*) FILTER (WHERE ${OUTREACH} AND s.status = 'HARD_BOUNCE') AS bounced,
+             SUM(s.price_charged) AS spent
+      FROM sends s JOIN "Contact" c ON c.id = s.prospect_id
+      WHERE s.customer_id = ${orgId} AND s.sent_at >= ${from} AND s.sent_at < ${to}${scopeSql(sc)}
+      GROUP BY 1`;
   return prisma.$queryRaw<{ d: Date; sent: bigint; first: bigint; delivered: bigint; bounced: bigint; spent: bigint | null }[]>`
     SELECT (s.sent_at AT TIME ZONE 'UTC' AT TIME ZONE ${tz})::date AS d,
            COUNT(*) FILTER (WHERE ${OUTREACH}) AS sent,
@@ -44,13 +69,13 @@ async function sendsByDay(orgId: string, tz: string, from: Date, to: Date) {
     GROUP BY 1`;
 }
 
-async function repliesByDay(orgId: string, tz: string, from: Date, to: Date) {
+async function repliesByDay(orgId: string, tz: string, from: Date, to: Date, sc: Scope) {
   return prisma.$queryRaw<{ d: Date; replies: bigint; hot: bigint }[]>`
     SELECT (c."repliedAt" AT TIME ZONE 'UTC' AT TIME ZONE ${tz})::date AS d,
            COUNT(*) AS replies,
            COUNT(*) FILTER (WHERE ${HOT}) AS hot
     FROM "Contact" c
-    WHERE c."organizationId" = ${orgId} AND c."repliedAt" >= ${from} AND c."repliedAt" < ${to}
+    WHERE c."organizationId" = ${orgId} AND c."repliedAt" >= ${from} AND c."repliedAt" < ${to}${scopeSql(sc)}
     GROUP BY 1`;
 }
 
@@ -70,17 +95,31 @@ function add(t: Totals, s?: { sent: bigint; first: bigint; delivered: bigint; bo
   return t;
 }
 
-type AudienceState = "sending" | "finding" | "waiting" | "paused" | "off" | "exhausted";
+type AudienceState = "sending" | "lined-up" | "finding" | "waiting" | "paused" | "off" | "exhausted";
 
-export async function performance(orgId: string, days: 7 | 30) {
-  const s = await getSettings(orgId);
+export async function performance(orgId: string, period: Period = "7d", campaign: string | null = null) {
+  const [s, onboarding, first] = await Promise.all([
+    getSettings(orgId),
+    prisma.onboarding.findUnique({ where: { organizationId: orgId }, select: { launchedAt: true } }),
+    period === "all" ? prisma.send.findFirst({ where: { organizationId: orgId }, orderBy: { sentAt: "asc" }, select: { sentAt: true } }) : null,
+  ]);
   const tz = s.timezone;
   const dayKey = dateKeyInTz(tz);
+  const sc: Scope = { byAudience: !!onboarding?.launchedAt, campaign };
+  // Days in the period: today is 1; "all" runs from the first email (at least a week so the chart has a shape, at most a year).
+  const sinceFirst = first?.sentAt ? Math.round((tzMidnightUtc(dayKey, tz).getTime() - tzMidnightUtc(dateKeyInTz(tz, first.sentAt), tz).getTime()) / 86_400_000) + 1 : 7;
+  const days = period === "today" ? 1 : period === "30d" ? 30 : period === "all" ? Math.min(365, Math.max(7, sinceFirst)) : 7;
   const from = tzMidnightUtc(addDays(dayKey, -(days - 1)), tz);
   const to = tzMidnightUtc(addDays(dayKey, 1), tz);
   const prevFrom = tzMidnightUtc(addDays(dayKey, -(2 * days - 1)), tz);
 
-  const [sends, replies, prevSends, prevReplies] = await Promise.all([sendsByDay(orgId, tz, from, to), repliesByDay(orgId, tz, from, to), sendsByDay(orgId, tz, prevFrom, from), repliesByDay(orgId, tz, prevFrom, from)]);
+  // "all" has nothing before it to compare with.
+  const [sends, replies, prevSends, prevReplies] = await Promise.all([
+    sendsByDay(orgId, tz, from, to, sc),
+    repliesByDay(orgId, tz, from, to, sc),
+    period === "all" ? [] : sendsByDay(orgId, tz, prevFrom, from, sc),
+    period === "all" ? [] : repliesByDay(orgId, tz, prevFrom, from, sc),
+  ]);
   const sMap = new Map(sends.map((r) => [dayKeyOf(new Date(r.d)), r]));
   const rMap = new Map(replies.map((r) => [dayKeyOf(new Date(r.d)), r]));
   const series = Array.from({ length: days }, (_, i) => {
@@ -93,6 +132,8 @@ export async function performance(orgId: string, days: 7 | 30) {
 
   return {
     days,
+    period,
+    campaign,
     series,
     totals: { ...totals, spent: formatUsd(BigInt(totals.spentDecicents)), pricePerEmail: formatUsd(PRICE_PER_EMAIL) },
     previous: { ...previous, spent: formatUsd(BigInt(previous.spentDecicents)) },
@@ -101,7 +142,7 @@ export async function performance(orgId: string, days: 7 | 30) {
 }
 
 /** Each audience as a campaign: its state in plain words, and what it has done in the period. */
-async function audiences(orgId: string, from: Date, to: Date, days: number) {
+export async function audiences(orgId: string, from: Date, to: Date, days: number) {
   const [s, onboarding, campaign] = await Promise.all([
     getSettings(orgId),
     prisma.onboarding.findUnique({ where: { organizationId: orgId }, select: { groups: true, launchedAt: true } }),
@@ -134,6 +175,9 @@ async function audiences(orgId: string, from: Date, to: Date, days: number) {
     SELECT p.a, p.found, p.waiting, COALESCE(o.sent, 0) AS sent, COALESCE(o."firstSent", 0) AS "firstSent", o.spent, p.replies, p.hot, COALESCE(o."sentToday", 0) AS "sentToday"
     FROM people p LEFT JOIN out o ON o.a = p.a`;
   const byId = new Map(rows.map((r) => [r.a, r]));
+  // People found by the search and waiting for their turn, before any email is looked up.
+  const lined = await prisma.prospect.groupBy({ by: [byAudience ? "audienceId" : "campaignId"], where: { organizationId: orgId, status: "WAITING" }, _count: { _all: true } });
+  const listedBy = new Map(lined.map((x) => [String((byAudience ? (x as { audienceId: string | null }).audienceId : (x as { campaignId: string }).campaignId) ?? ""), x._count._all]));
   const listed = (campaign?.audiences as { id?: string; saturatedAt?: string | null }[] | null) ?? [];
   const approvalPending = s.launchMode !== "AUTO" && !s.firstBatchApprovedAt;
   const paused = !s.autopilotEnabled || (byAudience && campaign?.status !== "ACTIVE");
@@ -145,12 +189,14 @@ async function audiences(orgId: string, from: Date, to: Date, days: number) {
     const hot = n(r?.hot);
     const spent = n(r?.spent);
     const exhausted = !!listed.find((a) => a.id === id)?.saturatedAt && !n(r?.waiting);
-    const state: AudienceState = !on ? "off" : paused ? "paused" : approvalPending ? "waiting" : n(r?.sentToday) || n(r?.waiting) ? "sending" : exhausted ? "exhausted" : "finding";
+    const inLine = listedBy.get(id) ?? 0;
+    const state: AudienceState = !on ? "off" : paused ? "paused" : approvalPending ? "waiting" : n(r?.sentToday) || n(r?.waiting) ? "sending" : inLine ? "lined-up" : exhausted ? "exhausted" : "finding";
     return {
       id,
       name,
       state,
       found: n(r?.found),
+      inLine,
       sent,
       perDay: Math.round(sent / days),
       replies: n(r?.replies),

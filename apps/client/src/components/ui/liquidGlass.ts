@@ -11,7 +11,8 @@ import { useEffect, type RefObject } from "react";
  * every other browser keeps the plain blur written as the CSS fallback.
  */
 
-type Options = { scale?: number; bezel?: number; blur?: number; brightness?: number };
+/** `steady` keeps the lens on while the page scrolls: for a small bar that content scrolls under, where the bend is the point. */
+type Options = { scale?: number; bezel?: number; blur?: number; brightness?: number; steady?: boolean };
 
 let next = 0;
 
@@ -137,8 +138,39 @@ function mapFor(w: number, h: number, radius: number, bezel: number): Promise<st
   return url;
 }
 
+/**
+ * The lens is an SVG filter, and Chromium draws an SVG backdrop filter on the CPU, again for every frame in which
+ * anything behind it moves. Scrolling under a lens therefore drops frames. So while the page scrolls every lens steps
+ * down to the plain CSS blur (drawn on the GPU), and comes back a moment after scrolling stops. A steady lens (a thin
+ * navbar, cheap to redraw) stays on, since seeing the page bend as it slides under the bar is the effect.
+ */
+const steady = new WeakSet<HTMLElement>();
+const lenses = new Map<HTMLElement, string>();
+let scrolling = false;
+let idle = 0;
+function onScroll() {
+  if (!scrolling) {
+    scrolling = true;
+    lenses.forEach((_, el) => !steady.has(el) && el.style.removeProperty("--lg-bf"));
+  }
+  clearTimeout(idle);
+  idle = window.setTimeout(() => {
+    scrolling = false;
+    lenses.forEach((value, el) => el.style.setProperty("--lg-bf", value));
+  }, 180);
+}
+function track(el: HTMLElement, value: string | null) {
+  if (value === null) lenses.delete(el);
+  else lenses.set(el, value);
+  // Adding the same listener again is a no-op, so this keeps exactly one while any lens is on the page.
+  if (lenses.size) addEventListener("scroll", onScroll, { passive: true });
+  else removeEventListener("scroll", onScroll);
+  if (value !== null && (!scrolling || steady.has(el))) el.style.setProperty("--lg-bf", value);
+}
+
 /** Puts the lens on one element and keeps it the right size. Returns the function that takes it off again. */
-export function attachLiquidGlass(el: HTMLElement, { scale = 24, bezel = 20, blur = 1.6, brightness = 1.08 }: Options = {}): () => void {
+export function attachLiquidGlass(el: HTMLElement, { scale = 24, bezel = 20, blur = 1.6, brightness = 1.08, steady: keep = false }: Options = {}): () => void {
+  if (keep) steady.add(el);
   const id = `lg-${++next}`;
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
@@ -173,7 +205,7 @@ export function attachLiquidGlass(el: HTMLElement, { scale = 24, bezel = 20, blu
       filter.setAttribute("width", String(w));
       filter.setAttribute("height", String(h));
       filter.innerHTML = filterMarkup(w, h, map, scale);
-      el.style.setProperty("--lg-bf", `url(#${id}) blur(${blur}px) saturate(165%) brightness(${brightness})`);
+      track(el, `url(#${id}) blur(${blur}px) saturate(165%) brightness(${brightness})`);
     });
   };
   const ro = new ResizeObserver(() => {
@@ -186,17 +218,19 @@ export function attachLiquidGlass(el: HTMLElement, { scale = 24, bezel = 20, blu
     live = false;
     ro.disconnect();
     if (frame) cancelAnimationFrame(frame);
+    track(el, null);
+    steady.delete(el);
     el.style.removeProperty("--lg-bf");
     svg.remove();
   };
 }
 
-export function useLiquidGlass(ref: RefObject<HTMLElement | null>, { scale = 24, bezel = 20, blur = 1.6, brightness = 1.08 }: Options = {}) {
+export function useLiquidGlass(ref: RefObject<HTMLElement | null>, { scale = 24, bezel = 20, blur = 1.6, brightness = 1.08, steady = false }: Options = {}) {
   useEffect(() => {
     const el = ref.current;
     if (!el || !supportsLens()) return;
-    return attachLiquidGlass(el, { scale, bezel, blur, brightness });
-  }, [ref, scale, bezel, blur, brightness]);
+    return attachLiquidGlass(el, { scale, bezel, blur, brightness, steady });
+  }, [ref, scale, bezel, blur, brightness, steady]);
 }
 
 /**

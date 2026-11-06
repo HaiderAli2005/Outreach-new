@@ -112,7 +112,7 @@ describe("pool operator control", () => {
 
   it("picks the reorder driver: burn, the spare shelf, or demand outgrowing the pool, capped at the batch size", () => {
     const base = { spareDomainsMin: 0, spareMultiplier: 1, maxBuyPerBatch: 50, committed: 0, capacityTotal: 10_000 };
-    expect(shelfRunway(6, 1.5, base).reorderBecause).toMatchObject({ burnReplacement: 8, driver: "burnReplacement" });
+    expect(shelfRunway(6, 1.5, base).reorderBecause).toMatchObject({ burnReplacement: 5, driver: "burnReplacement" });
     expect(shelfRunway(6, 0, { ...base, spareDomainsMin: 15 }).reorderBecause).toMatchObject({ burnReplacement: 0, spareShortfall: 9, driver: "spareShortfall" });
     const demand = shelfRunway(20, 0, { ...base, committed: 12_000, spareMultiplier: 1.5 });
     expect(demand.reorderBecause.driver).toBe("demandShortfall");

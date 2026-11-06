@@ -153,7 +153,7 @@ export function shelfRunway(warmShelf: number, ewma: number, t?: RestockTargets)
 }
 
 /** What the restock targets are measured against right now. */
-async function restockTargets(capacityTotal?: number): Promise<RestockTargets> {
+export async function restockTargets(capacityTotal?: number): Promise<RestockTargets> {
   const [s, committed, total] = await Promise.all([poolSettings(), committedEmails("CUSTOMER"), capacityTotal ?? poolCapacity()]);
   return { spareDomainsMin: s.spareDomainsMin, spareMultiplier: Number(s.spareMultiplier), maxBuyPerBatch: s.maxBuyPerBatch, committed, capacityTotal: total };
 }
@@ -298,11 +298,37 @@ export function burnKind(reason: string | null): BurnKind {
 async function burnImpact(degradedDomains: { name: string }[], prices: CostPrices, now: Date) {
   const monthAgo = new Date(now.getTime() - 30 * DAY);
   const onBurned = { assignedMailbox: { organizationId: null, status: "REPLIES_ONLY" as const } };
+  const onDomain = { organizationId: true, assignedMailbox: { select: { sendingDomainId: true } } } as const;
   const [live, running, boxes] = await Promise.all([
-    prisma.contact.findMany({ where: { ...onBurned, hasInbound: true, lastMessageAt: { gte: monthAgo } }, select: { organizationId: true } }),
-    prisma.contact.findMany({ where: { ...onBurned, hasInbound: false, sequenceStoppedAt: null, status: "CONTACTED" }, select: { organizationId: true } }),
-    prisma.mailbox.findMany({ where: { organizationId: null, status: "REPLIES_ONLY" }, select: { warmupDay: true, sendingDomainId: true } }),
+    prisma.contact.findMany({ where: { ...onBurned, hasInbound: true, lastMessageAt: { gte: monthAgo } }, select: onDomain }),
+    prisma.contact.findMany({ where: { ...onBurned, hasInbound: false, sequenceStoppedAt: null, status: "CONTACTED" }, select: onDomain }),
+    prisma.mailbox.findMany({
+      where: { organizationId: null, status: "REPLIES_ONLY" },
+      select: { warmupDay: true, sendingDomainId: true, degradedAt: true, sendingDomain: { select: { name: true, status: true, degradedAt: true } } },
+    }),
   ]);
+  // Burned mailboxes grouped by domain, each with the conversations it still carries, most conversations first.
+  const groups = new Map<string, { domain: string; domainBurned: boolean; burnedOn: Date | null; mailboxes: number; liveConversations: number; sequencesRunning: number; customers: Set<string> }>();
+  for (const m of boxes) {
+    const key = m.sendingDomainId ?? "none";
+    const g = groups.get(key) ?? { domain: m.sendingDomain?.name ?? "unknown", domainBurned: m.sendingDomain?.status === "DEGRADED", burnedOn: m.sendingDomain?.degradedAt ?? m.degradedAt, mailboxes: 0, liveConversations: 0, sequencesRunning: 0, customers: new Set<string>() };
+    g.mailboxes++;
+    if (m.degradedAt && (!g.burnedOn || m.degradedAt < g.burnedOn)) g.burnedOn = m.degradedAt;
+    groups.set(key, g);
+  }
+  const tally = (rows: typeof live, field: "liveConversations" | "sequencesRunning") => {
+    for (const c of rows) {
+      const g = groups.get(c.assignedMailbox?.sendingDomainId ?? "none");
+      if (!g) continue;
+      g[field]++;
+      g.customers.add(c.organizationId);
+    }
+  };
+  tally(live, "liveConversations");
+  tally(running, "sequencesRunning");
+  const byDomain = [...groups.values()]
+    .map(({ customers, ...g }) => ({ ...g, customers: customers.size }))
+    .sort((a, b) => b.liveConversations + b.sequencesRunning - (a.liveConversations + a.sequencesRunning));
   // What the burned mailboxes could send a day when they burned: each one's cap at its warmup step (a mailbox that
   // burned on warmup day 3 was sending 5, not 30), and never more than one domain's cap per domain.
   const perDomain = new Map<string, number>();
@@ -318,6 +344,7 @@ async function burnImpact(degradedDomains: { name: string }[], prices: CostPrice
     liveConversations: live.length,
     sequencesRunning: running.length,
     customersAffected: new Set([...live, ...running].map((c) => c.organizationId)).size,
+    byDomain,
   };
 }
 
@@ -329,6 +356,11 @@ async function dailyTrend(domainIds: string[], now: Date, today: { capacity: num
     prisma.poolMetricsDaily.findMany({ where: { day: { gte: from } }, select: { day: true, capacity: true, committed: true } }),
   ]);
   const todayKey = dayKeyOf(now);
+  // Capacity and what customers asked for are levels: they hold until something changes them. A day with no snapshot
+  // (the job didn't run) keeps the last known level instead of breaking the line; before the first snapshot it stays
+  // empty, because the pool didn't exist yet.
+  let lastCapacity: number | null = null;
+  let lastCommitted: number | null = null;
   return Array.from({ length: 30 }, (_, i) => {
     const key = dayKeyOf(new Date(from.getTime() + i * DAY));
     const h = health.find((r) => dayKeyOf(r.day) === key);
@@ -337,13 +369,15 @@ async function dailyTrend(domainIds: string[], now: Date, today: { capacity: num
     const sends = isToday ? Math.max(today.sentToday, h?._sum.sends ?? 0) : (h?._sum.sends ?? 0);
     // Weighted the way the burn rule weighs it: a complaint counts as ten hard bounces.
     const bad = (h?._sum.hardBounces ?? 0) + COMPLAINT_WEIGHT * (h?._sum.complaints ?? 0);
+    lastCapacity = isToday ? today.capacity : (m?.capacity ?? lastCapacity);
+    lastCommitted = isToday ? today.committed : (m?.committed ?? lastCommitted);
     return {
       day: key,
       sends,
       bad,
       badRate: sends ? Number((bad / sends).toFixed(4)) : null,
-      capacity: isToday ? today.capacity : (m?.capacity ?? null),
-      committed: isToday ? today.committed : (m?.committed ?? null),
+      capacity: lastCapacity,
+      committed: lastCommitted,
     };
   });
 }
@@ -583,7 +617,7 @@ async function unmatchedTrend(now: Date) {
 
 const CONSOLE_FRESH_MS = 30 * 60_000;
 /** Bumped when the console's shape changes, so a copy cached before a deploy is recomputed, not served. */
-export const CONSOLE_VERSION = 5;
+export const CONSOLE_VERSION = 7;
 
 /** Every 15 minutes: computes the console and stores it on today's metrics row. */
 export async function cacheConsole(now = new Date()) {

@@ -815,7 +815,7 @@ function Inbox() {
             <span>
               {data ? `${n0(total)} ${total === 1 ? "conversation" : "conversations"}` : "Conversations"}
             </span>
-            {isFetching && !isLoading ? <span className="spinner" style={{ width: 14, height: 14, borderColor: "rgba(255,240,220,.2)", borderTopColor: "var(--gold)" }} /> : <span className="ibx-keys"><kbd>J</kbd><kbd>K</kbd> to move</span>}
+            {isFetching && !isLoading ? <span className="spinner" style={{ width: 14, height: 14, borderColor: "rgb(var(--tw) / .2)", borderTopColor: "var(--gold)" }} /> : <span className="ibx-keys"><kbd>J</kbd><kbd>K</kbd> to move</span>}
           </div>
           <div className="ibx-list-scroll" ref={listRef}>
             {isError ? (

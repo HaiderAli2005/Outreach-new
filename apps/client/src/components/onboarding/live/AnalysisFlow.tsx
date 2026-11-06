@@ -12,6 +12,7 @@ import { n0 } from "@/lib/format";
 import { EmailsPanel, LiveAnalysis, type Lead, type PhaseKey } from "./LiveAnalysis";
 import { useDock } from "./motion";
 import type { RunState } from "./run";
+import { StepCta } from "../StepCta";
 
 export type AnalysisView = "review" | "business" | "buyers" | "market";
 
@@ -211,6 +212,7 @@ export function AnalysisFlow({
           <header className="ph-head">
             <h1 className="ph-h">Who buys from you</h1>
             <p className="ph-sub">Ranked by where we&apos;d start. You can change keywords and switch audiences off in your free overview.</p>
+            <StepCta />
           </header>
           {guessNote}
           <div className="bg-grid">
@@ -230,6 +232,7 @@ export function AnalysisFlow({
           <header className="ph-head">
             <h1 className="ph-h">Your market</h1>
             <p className="ph-sub">How many people match your audiences, and how many we can reach with a verified work email.</p>
+            <StepCta />
           </header>
           {market?.available ? (
             <div className="ph-card">
@@ -287,6 +290,7 @@ export function AnalysisFlow({
           <header className="ph-head">
             <h1 className="ph-h">Your first email</h1>
             <p className="ph-sub">Written from your analysis for a real lead in your market. You can edit every word before launch.</p>
+            <StepCta />
           </header>
           {guessNote}
           <EmailsPanel
@@ -323,6 +327,7 @@ export function AnalysisFlow({
           )}
         </h1>
         <p className="ph-sub">Check the facts and edit anything we got wrong. Your audiences and emails are built from them.</p>
+        <StepCta />
       </header>
       {updateState.error ? (
         <div className="banner bad" role="alert" >

@@ -27,16 +27,16 @@ describe("send job", () => {
 
   it("starts today's new people through the pool, pins each one and holds their sequence", async () => {
     const t = await createTenant();
-    // 8 emails a day carry 2 new people a day: each person takes a 4-email sequence.
-    await prisma.orgSettings.update({ where: { organizationId: t.orgId }, data: { weeklyBatchMode: false, dailyBudgetDecicents: 320n } });
+    // 4 emails a day and no follow-ups due: new people may take the whole day; 3 are ready.
+    await prisma.orgSettings.update({ where: { organizationId: t.orgId }, data: { weeklyBatchMode: false, dailyBudgetDecicents: 160n } });
     await makePoolMailbox();
     const campaign = await makeCampaign(t.orgId);
     for (let i = 0; i < 3; i++) await makeContact(t.orgId, sendable(campaign.id, { personalization: GOOD_FIRST_TOUCH.replace("reports", ["reports", "briefs", "decks"][i]), messageSubject: ["Research content volume", "Client reporting systems", "Podcast research flow"][i] }));
     await makeContact(t.orgId, { campaignId: campaign.id, status: "NEW" });
     const r = await pushQueue(t.orgId, { ignoreWindow: true });
-    expect(r.pushed).toBe(2);
+    expect(r.pushed).toBe(3);
     // Sent by us, plain text, with the unsubscribe link on the sending domain.
-    expect(transport.sent).toHaveLength(2);
+    expect(transport.sent).toHaveLength(3);
     const first = transport.sent[0].message;
     expect(first.text).toMatch(/steady stream/);
     // The first email has no link in it at all; unsubscribing works from the List-Unsubscribe header or a reply.
@@ -45,13 +45,13 @@ describe("send job", () => {
     const domain = first.from.address.split("@")[1];
     expect(first.headers["List-Unsubscribe"]).toContain(`https://${domain}/u/`);
     const contacted = await prisma.contact.findMany({ where: { organizationId: t.orgId, status: "CONTACTED" } });
-    expect(contacted).toHaveLength(2);
+    expect(contacted).toHaveLength(3);
     expect(contacted.every((c) => !!c.assignedMailboxId)).toBe(true);
-    expect(await prisma.send.count({ where: { organizationId: t.orgId, status: "SENT", isFirstTouch: true } })).toBe(2);
+    expect(await prisma.send.count({ where: { organizationId: t.orgId, status: "SENT", isFirstTouch: true } })).toBe(3);
     // Each sequence held 160 and its first email was charged 40 on acceptance.
     const held = await prisma.creditReservation.aggregate({ where: { organizationId: t.orgId, status: "OPEN" }, _sum: { remaining: true } });
-    expect(held._sum.remaining).toBe(240n);
-    expect((await pushQueue(t.orgId, { ignoreWindow: true })).reason).toBe("daily-cap-reached");
+    expect(held._sum.remaining).toBe(360n);
+    expect((await pushQueue(t.orgId, { ignoreWindow: true })).reason).toBe("nothing-sendable");
   });
 
   it("holds leads from unapproved weeks and from companies already in conversation", async () => {
@@ -67,13 +67,33 @@ describe("send job", () => {
     expect(transport.sent).toHaveLength(0);
   });
 
-  it("starts a third of the daily volume as new people, whatever is queued", async () => {
+  it("gives new people what follow-ups leave: the whole day with none due, never under a fifth", async () => {
+    const t = await createTenant();
+    // 12 emails a day and none due: all 10 ready go today.
+    await prisma.orgSettings.update({ where: { organizationId: t.orgId }, data: { weeklyBatchMode: false, dailyBudgetDecicents: 480n } });
+    await makePoolMailbox();
+    const campaign = await makeCampaign(t.orgId);
+    for (let i = 0; i < 10; i++) await makeContact(t.orgId, sendable(campaign.id));
+    expect((await pushQueue(t.orgId, { ignoreWindow: true })).pushed).toBe(10);
+  });
+
+  it("puts follow-ups due today first: new people get the rest of the day, and at least a fifth of it", async () => {
     const t = await createTenant();
     await prisma.orgSettings.update({ where: { organizationId: t.orgId }, data: { weeklyBatchMode: false, dailyBudgetDecicents: 480n } });
     await makePoolMailbox();
     const campaign = await makeCampaign(t.orgId);
-    for (let i = 0; i < 6; i++) await makeContact(t.orgId, sendable(campaign.id));
-    expect((await pushQueue(t.orgId, { ignoreWindow: true })).pushed).toBe(3);
+    const soon = new Date(Date.now() + 60_000);
+    // 8 follow-ups due today out of 12 emails: 4 left for new people.
+    for (let i = 0; i < 8; i++) await makeContact(t.orgId, sendable(campaign.id, { status: "CONTACTED", nextTouchAt: soon }));
+    for (let i = 0; i < 10; i++) await makeContact(t.orgId, sendable(campaign.id));
+    expect((await pushQueue(t.orgId, { ignoreWindow: true })).pushed).toBe(4);
+    // A stacked day (20 due): new people still get their fifth, 3.
+    const t2 = await createTenant();
+    await prisma.orgSettings.update({ where: { organizationId: t2.orgId }, data: { weeklyBatchMode: false, dailyBudgetDecicents: 480n } });
+    const c2 = await makeCampaign(t2.orgId);
+    for (let i = 0; i < 20; i++) await makeContact(t2.orgId, sendable(c2.id, { status: "CONTACTED", nextTouchAt: soon }));
+    for (let i = 0; i < 10; i++) await makeContact(t2.orgId, sendable(c2.id));
+    expect((await pushQueue(t2.orgId, { ignoreWindow: true })).pushed).toBe(3);
   });
 
   it("stops for the day when the balance can't cover another sequence", async () => {

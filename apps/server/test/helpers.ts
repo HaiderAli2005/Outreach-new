@@ -1,4 +1,5 @@
 import { clearPoolSettingsCache } from "../src/domain/pool/settings.js";
+import { clearInboxKitCaches } from "../src/domain/pool/inboxkit/settings.js";
 import request from "supertest";
 import type { Express } from "express";
 import type { MemberRole } from "@prisma/client";
@@ -12,6 +13,7 @@ import { setNsResolver, setRegistrarLookup, setTxtResolver } from "../src/domain
 import { settleFirstRuns } from "../src/modules/onboarding/firstRun.js";
 import { setApolloFactory } from "../src/integrations/apollo.js";
 import { setVerifierFactory } from "../src/integrations/verifier.js";
+import { setSiteLanguageReader } from "../src/integrations/site.js";
 import { setSlackPoster } from "../src/integrations/slack.js";
 import { setStripeClient } from "../src/modules/billing/stripe.client.js";
 import { setSiteReader } from "../src/integrations/site.js";
@@ -33,11 +35,14 @@ const TABLES = [
   "pool_metrics_daily", "pool_reorders", "Refund", "Payment", "WebhookEvent", "consent_records", "lead_status_vocab", "personas", "Message", "Contact", "Company",
   "WeeklyBatch", "Campaign", "BlocklistEntry", "SystemLog", "UsageCounter", "Mailbox", "SendingDomain", "Onboarding", "IntegrationCredential",
   "OrgSettings", "Membership", "Organization", "RefreshToken", "OAuthAccount", "EmailChallenge", "User", "PoolSettings", "ai_usage", "CostSettings",
+  "SupplierOrderItem", "SupplierOrder", "InboxKitSettings", "MapsPlace",
 ];
 
 export async function resetDb(): Promise<void> {
   // Background work from the previous test (a launch's first run) finishes before its rows are wiped.
   await settleFirstRuns();
+  // No test reads a real website for a prospect's language; a test that needs one sets its own reader.
+  setSiteLanguageReader(async () => null);
   await prisma.$executeRawUnsafe(`TRUNCATE ${TABLES.map((t) => `"${t}"`).join(", ")} CASCADE`);
   setAiClient(null);
   transport = new FakeTransport();
@@ -52,6 +57,7 @@ export async function resetDb(): Promise<void> {
   setStripeClient(undefined);
   setSiteReader(async () => ({ home: null, pages: [] }));
   clearPoolSettingsCache();
+  clearInboxKitCaches();
   setMailSender(null);
   features.analysisStream = false;
   features.accurateCompanyCount = false;

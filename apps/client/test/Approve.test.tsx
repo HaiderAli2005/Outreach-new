@@ -62,7 +62,40 @@ describe("approval before launch", () => {
     fireEvent.click(screen.getByText(/I confirm I am authorised/));
     expect(go).toBeEnabled();
     fireEvent.click(go);
-    await waitFor(() => expect(calls.find((c) => c.path === "/launch/approve")?.body).toEqual({ consent: true, excludeIds: ["c2"] }));
+    await waitFor(() => expect(calls.find((c) => c.path === "/launch/approve")?.body).toEqual({ consent: true, excludeIds: ["c2"], shownIds: ["c1", "c2"], autoContinue: true }));
+  });
+
+  it("shows the whole audience being approved: its size, the audiences in it, and where and how big", async () => {
+    mockServer({
+      "GET /launch": () =>
+        json({
+          data: {
+            ...view(),
+            audience: { people: 25223, reachable: 18400, audiences: [{ name: "Agency owners", people: 15000 }, { name: "Publishers", people: 10223 }], countries: [["United States", 60], ["United Kingdom", 25]], sizes: [["1–10 staff", 70]], sampleSize: 100, checkedAt: null },
+          },
+        }),
+    });
+    show();
+    expect(await screen.findByText("25,223")).toBeInTheDocument();
+    expect(screen.getByText(/about 18,400 with an email we can find/)).toBeInTheDocument();
+    expect(screen.getByText("Agency owners")).toBeInTheDocument();
+    expect(screen.getByText("60%")).toBeInTheDocument();
+    expect(screen.getByText(/keeps working through this audience/)).toBeInTheDocument();
+  });
+
+  it("asks once what happens after the first batch: keep emailing new people automatically (on), or review weekly", async () => {
+    const { calls } = mockServer({
+      "GET /launch": () => json({ data: view() }),
+      "POST /launch/approve": () => json({ data: { approved: 2, continued: 0 } }),
+    });
+    show();
+    const keep = await screen.findByRole("switch", { name: "Keep emailing new people automatically" });
+    expect(keep).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(keep);
+    expect(screen.getByText(/wait in a weekly list for you to review/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/I confirm I am authorised/));
+    fireEvent.click(screen.getByRole("button", { name: /Approve and start sending/ }));
+    await waitFor(() => expect((calls.find((c) => c.path === "/launch/approve")?.body as { autoContinue: boolean }).autoContinue).toBe(false));
   });
 
   it("shows every email in the sequence as it will read, with the sender's name filled in", async () => {

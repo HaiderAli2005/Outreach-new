@@ -1,4 +1,4 @@
-import { BUDGET_MAX_DECICENTS, BUDGET_MIN_DECICENTS, newPeoplePerDay } from "../../config/plans.js";
+import { BUDGET_MAX_DECICENTS, BUDGET_MIN_DECICENTS, newPeopleBounds } from "../../config/plans.js";
 import { hasCard, isOffSessionConsent } from "../billing/billing.service.js";
 import { formatUsd, MAX_TOPUP, validateTopup } from "../../domain/money.js";
 import { mandateText } from "../billing/autoReload.js";
@@ -19,7 +19,7 @@ export type SettingsPatch = Partial<
   Pick<
     OrgSettings,
     | "autopilotEnabled" | "weeklyBatchMode" | "autoApproveBatches" | "leadSourcing" | "perMailboxDailyCap" | "blocklistNoReplyDays"
-    | "timezone" | "sendingWindowStart" | "sendingWindowEnd" | "language" | "personalizationEnabled" | "requireVerifiedEmail"
+    | "timezone" | "sendingWindowStart" | "sendingWindowEnd" | "language" | "matchProspectLanguage" | "personalizationEnabled" | "requireVerifiedEmail"
     | "monthlyCreditCap" | "dailyCreditCap" | "dailySourceTarget" | "apolloCycleResetDay" | "perCompanyContactCap"
     | "senderCompany" | "senderTitle" | "senderAddress" | "meetingLink" | "valueProp" | "optOutLine" | "browserNotifications"
     | "draftReplies" | "launchMode" | "sendDays" | "prospectTimezone"
@@ -120,7 +120,7 @@ export async function update(orgId: string, patch: SettingsPatch, actor?: { user
     const b = BigInt(dailyBudgetDecicents);
     if (b !== 0n && (b < BUDGET_MIN_DECICENTS || b > BUDGET_MAX_DECICENTS)) throw unprocessable(`The daily budget is $0 (paused) or between ${formatUsd(BUDGET_MIN_DECICENTS)} and ${formatUsd(BUDGET_MAX_DECICENTS)}`);
     // Finding follows sending: the budget's emails carry a quarter as many new people, so finding more only piles up.
-    if (patch.dailySourceTarget === undefined && b > 0n) data.dailySourceTarget = Math.max(1, newPeoplePerDay(emailsPerDay({ dailyBudgetDecicents: b })));
+    if (patch.dailySourceTarget === undefined && b > 0n) data.dailySourceTarget = Math.max(1, newPeopleBounds(emailsPerDay({ dailyBudgetDecicents: b })).max);
   }
   if (patch.draftReplies === true && !features.ai) throw notConfigured("AI (needed to draft replies)");
   if (patch.autopilotEnabled === true && !current.autopilotEnabled) {

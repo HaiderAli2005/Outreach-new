@@ -12,6 +12,7 @@ billingRouter.use(requireAuth, requireOrg);
 billingRouter.get("/credits", c.credits);
 billingRouter.post("/topups", requireManager, c.topup);
 billingRouter.post("/setup-intents", requireManager, c.setup);
+billingRouter.post("/card-checkout", requireManager, c.cardCheckout);
 billingRouter.delete("/card", requireManager, c.removeCard);
 billingRouter.post("/close", requireManager, c.close);
 billingRouter.post("/reverify", requireManager, c.reverify);

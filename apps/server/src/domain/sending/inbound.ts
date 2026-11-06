@@ -26,7 +26,15 @@ import type { InboundRaw } from "./transport/types.js";
  */
 
 /** "history" is mail that was already in the inbox before the mailbox joined Aperture: kept for the record, never acted on. */
-export type InboundKind = "bounce" | "complaint" | "auto_reply" | "unsubscribe" | "human_reply" | "unmatched" | "history";
+export type InboundKind = "bounce" | "complaint" | "auto_reply" | "unsubscribe" | "human_reply" | "unmatched" | "history" | "warmup";
+
+/**
+ * A mailbox whose supplier still runs warmup on it (InboxKit, kept on after it goes live) receives the warmup network's
+ * messages. They answer nothing we sent, so one that matches no conversation is recorded as warmup and nobody has to
+ * look at it. A real reply always carries our thread headers and is matched before this applies.
+ */
+const SUPPLIER_WARMUP_ON = ["active", "paused", "pending_activation", "past_due"];
+const underSupplierWarmup = (m: Pick<Mailbox, "supplierWarmupStatus">) => !!m.supplierWarmupStatus && SUPPLIER_WARMUP_ON.includes(m.supplierWarmupStatus);
 
 /** Clocks differ a little between mail servers, so "before the mailbox joined" allows an hour of slack. */
 const HISTORY_SLACK_MS = 3_600_000;
@@ -217,7 +225,7 @@ export async function processInbound(mailbox: Mailbox, msg: InboundRaw): Promise
   else if (kind === "complaint") ({ kind, send } = await handleComplaint(p));
   else {
     send = await matchThread(p, mailbox);
-    if (!send) kind = "unmatched";
+    if (!send) kind = underSupplierWarmup(mailbox) ? "warmup" : "unmatched";
     else if (kind === "unsubscribe") await unsubscribeEverywhere(send.contactId, "mail");
     else if (kind === "human_reply") {
       const contact = await prisma.contact.findUnique({ where: { id: send.contactId } });
@@ -239,7 +247,7 @@ export async function processInbound(mailbox: Mailbox, msg: InboundRaw): Promise
       bodyText: p.text.slice(0, 20_000) || null,
       rawHeaders: headers || null,
       messageId: p.messageId,
-      ...(kind === "history" ? { handledAt: new Date() } : {}),
+      ...(kind === "history" || kind === "warmup" ? { handledAt: new Date() } : {}),
     },
   }).catch((e: Error) => logger.warn({ err: e.message, mailboxId: mailbox.id, uid: msg.uid }, "inbound already recorded"));
   return kind;

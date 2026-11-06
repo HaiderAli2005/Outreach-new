@@ -2,12 +2,77 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Button, Empty, ErrorState, Notice, SkeletonRows, ViewHead } from "@/components/ui/primitives";
+import { Button, Empty, ErrorState, Notice, SkeletonRows, Switch, ViewHead } from "@/components/ui/primitives";
 import { Icon } from "@/components/ui/Icon";
 import { useRole, useToast } from "@/store";
 import { errorMessage, useApproveFirstBatchMutation, useApprovePeopleMutation, useLaunchViewQuery } from "@/store/api";
 import { dateLong, n0 } from "@/lib/format";
 import type { LaunchEmail, LaunchView } from "@/lib/types";
+
+/** Shares of a sample as whole percents, biggest first, so a breakdown reads like "62% United States". */
+function shares(rows: [string, number][], total: number) {
+  return rows.filter(([, n]) => n > 0).map(([label, n]) => ({ label, pct: total ? Math.max(1, Math.round((n / total) * 100)) : 0 }));
+}
+
+/**
+ * Who is really being approved: not only the people on this page, but the audience Aperture keeps working through
+ * afterwards. Its size, the audiences in it, and where the people are and how big their companies are, from the
+ * market check at setup. The approval then means "this audience", as it does in a hands-off agent.
+ */
+function AudienceCard({ a, ready }: { a: NonNullable<LaunchView["audience"]>; ready: number }) {
+  const countries = shares(a.countries, a.sampleSize);
+  const sizes = shares(a.sizes, a.sampleSize);
+  return (
+    <section className="apv-aud glass" aria-label="Your audience">
+      <div className="apv-aud-top">
+        <div>
+          <span className="apv-aud-k">Your audience</span>
+          <b className="apv-aud-n num">{n0(a.people ?? 0)}</b>
+          <span className="apv-aud-sub">
+            people match{a.reachable != null ? ` · about ${n0(a.reachable)} with an email we can find` : ""}
+          </span>
+        </div>
+        <p>
+          These first {n0(ready)} are the start. After you approve, Aperture keeps working through this audience within your daily budget, checking every address before it is
+          emailed.
+        </p>
+      </div>
+      {a.audiences.length ? (
+        <ul className="apv-aud-groups">
+          {a.audiences.map((g) => (
+            <li key={g.name}>
+              {g.name}
+              {g.people != null ? <small>{n0(g.people)}</small> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {countries.length || sizes.length ? (
+        <div className="apv-aud-bars">
+          {[
+            ["Where they are", countries],
+            ["Company size", sizes],
+          ].map(([title, rows]) =>
+            (rows as { label: string; pct: number }[]).length ? (
+              <div key={title as string}>
+                <span className="apv-aud-k">{title as string}</span>
+                {(rows as { label: string; pct: number }[]).map((r) => (
+                  <div className="apv-aud-row" key={r.label}>
+                    <span>{r.label}</span>
+                    <i aria-hidden="true">
+                      <em style={{ width: `${r.pct}%` }} />
+                    </i>
+                    <b className="num">{r.pct}%</b>
+                  </div>
+                ))}
+              </div>
+            ) : null,
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
 /** An email as it will read. The server fills in the sender's name. */
 function Body({ text }: { text: string | null }) {
@@ -83,6 +148,8 @@ export default function ApprovePage() {
   const [approveSome, approvingSome] = useApprovePeopleMutation();
   const [excluded, setExcluded] = useState<string[]>([]);
   const [consent, setConsent] = useState(false);
+  // After the first batch, keep going on its own (like a hands-off agent), unless the customer wants a weekly review.
+  const [keepGoing, setKeepGoing] = useState(true);
   const { canManage } = useRole();
   const toast = useToast();
   const head = <ViewHead kicker="Launch" title="Approve before anything sends." sub="Read the people we found and every email they would get. Nothing is sent until you approve, and no timer ever approves for you." />;
@@ -106,19 +173,28 @@ export default function ApprovePage() {
   const consented = !!data.consent || consent;
   const kept = data.people.filter((p) => !excluded.includes(p.id));
   const go = () => {
-    const done = (n: number) => toast(`${n0(n)} ${n === 1 ? "person" : "people"} approved. They're emailed in their own working hours.`, "good");
-    (perPerson ? approveSome({ ids: kept.map((p) => p.id), consent }).unwrap() : approve({ consent, excludeIds: excluded }).unwrap()).then((r) => done(r.approved)).catch((e) => toast(errorMessage(e), "bad"));
+    const done = (n: number, more = 0) =>
+      toast(
+        `${n0(n)} ${n === 1 ? "person" : "people"} approved. They're emailed in their own working hours.${!perPerson && keepGoing ? ` New people are emailed automatically from now on${more ? `, starting with ${n0(more)} already found` : ""}.` : ""}`,
+        "good",
+      );
+    (perPerson
+      ? approveSome({ ids: kept.map((p) => p.id), consent }).unwrap()
+      : approve({ consent, excludeIds: excluded, shownIds: data.people.map((p) => p.id), autoContinue: keepGoing }).unwrap()
+    )
+      .then((r: { approved: number; continued?: number }) => done(r.approved, r.continued ?? 0))
+      .catch((e) => toast(errorMessage(e), "bad"));
   };
   return (
     <>
       {head}
       {data.approved && !each ? (
         <Notice tone="good" icon="check" title="Your first batch is approved">
-          Approved {data.approvedAt ? dateLong(data.approvedAt) : ""}. People we find from now on wait below for your approval, unless Approve weeks automatically is on in <Link href="/app/settings?tab=autopilot">Settings</Link>.
+          Approved {data.approvedAt ? dateLong(data.approvedAt) : ""}. People we find from now on wait below for your approval, unless Approve new people automatically is on in <Link href="/app/settings?tab=autopilot">Settings</Link>.
         </Notice>
       ) : data.launchMode === "AUTO" ? (
         <Notice tone="info" icon="plane" title="No first-20 step">
-          People we find still wait here for your approval, unless Approve weeks automatically is on in <Link href="/app/settings?tab=autopilot">Settings</Link>. Uploaded lists never wait.
+          People we find still wait here for your approval, unless Approve new people automatically is on in <Link href="/app/settings?tab=autopilot">Settings</Link>. Uploaded lists never wait.
         </Notice>
       ) : (
         <div className="apv-progress glass">
@@ -133,6 +209,8 @@ export default function ApprovePage() {
           </div>
         </div>
       )}
+
+      {!data.approved && data.audience ? <AudienceCard a={data.audience} ready={data.ready} /> : null}
 
       {data.people.length ? (
         <div className="stack">
@@ -156,6 +234,20 @@ export default function ApprovePage() {
           ) : (
             <p className="fine">Your confirmation is on record from {dateLong(data.consent.at)}.</p>
           )}
+          {!perPerson ? (
+            <div className="apv-next">
+              <div>
+                <b>After this, keep emailing new people automatically</b>
+                <small>
+                  {keepGoing
+                    ? "Aperture keeps finding people like these, checks their email, writes to them and sends within your daily budget. You'll see who's up next on your dashboard and can leave anyone out."
+                    : "New people wait in a weekly list for you to review and approve before anything sends."}{" "}
+                  You can change this any time in Settings, Sending.
+                </small>
+              </div>
+              <Switch label="Keep emailing new people automatically" checked={keepGoing} onChange={setKeepGoing} />
+            </div>
+          ) : null}
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 12 }}>
             <span className="muted" style={{ alignSelf: "center", fontSize: 13.5 }}>
               {n0(kept.length)} to approve{excluded.length ? `, ${n0(excluded.length)} left out` : ""}

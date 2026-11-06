@@ -12,6 +12,8 @@ import { scheduleNextTouch, sendFollowUp } from "./pipeline.js";
 import { credsFor, transportFor } from "./transport/index.js";
 import { inboxChanged } from "./inboxEvents.js";
 import { withLock } from "../../lib/locks.js";
+import { addDays, dateKeyInTz, tzMidnightUtc } from "../../lib/time.js";
+import { dailyPlan } from "./dailyPlan.js";
 
 const MIN = 60_000;
 const DAY = 86_400_000;
@@ -134,9 +136,12 @@ export async function retrySoftBounces(limit = 100): Promise<{ retried: number; 
  * Sequence emails 2, 3 and 4. Each goes from the mailbox the person is pinned to, threaded under the one before, at
  * the random minute picked for it inside the prospect's own window on day 3, 7 or 14, and only while the sequence
  * is still running (no reply from them or a colleague, no unsubscribe, no bounce, not marked done).
+ *
+ * Follow-ups go first in the day's budget, up to the day's emails less the floor kept for new people (dailyPlan).
+ * One that does not fit waits for the next sending day, so new people still go out on a day stacked with follow-ups.
  */
-export async function runFollowUps(orgId: string, now = new Date()): Promise<{ sent: number; waiting: number; finished: number; rescheduled: number }> {
-  const out = { sent: 0, waiting: 0, finished: 0, rescheduled: 0 };
+export async function runFollowUps(orgId: string, now = new Date()): Promise<{ sent: number; waiting: number; finished: number; rescheduled: number; deferred: number }> {
+  const out = { sent: 0, waiting: 0, finished: 0, rescheduled: 0, deferred: 0 };
   const settings = await getSettings(orgId);
   if (!settings.autopilotEnabled) return out;
   const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { region: true } });
@@ -152,6 +157,8 @@ export async function runFollowUps(orgId: string, now = new Date()): Promise<{ s
     orderBy: { nextTouchAt: { sort: "asc", nulls: "first" } },
     take: 500,
   });
+  // No budget (an admin's no-cap) means no split: every follow-up goes.
+  const plan = due.length && settings.dailyBudgetDecicents !== null ? await dailyPlan(orgId, settings, now) : null;
   for (const c of due) {
     const sends = await prisma.send.findMany({ where: { contactId: c.id, step: { gte: 1 } }, orderBy: { step: "asc" }, select: { step: true, status: true, sentAt: true } });
     if (sends.some((s) => s.status === "SOFT_BOUNCE")) {
@@ -177,6 +184,13 @@ export async function runFollowUps(orgId: string, now = new Date()): Promise<{ s
     if (!inWindow(w, now)) {
       await prisma.contact.update({ where: { id: c.id }, data: { nextTouchAt: nextSlot(w, now) } });
       out.rescheduled++;
+      continue;
+    }
+    if (plan && plan.followupsSent + out.sent >= plan.followupsAllowed) {
+      // Today's room for follow-ups is used: this one goes at a fresh minute on the next sending day.
+      await prisma.contact.update({ where: { id: c.id }, data: { nextTouchAt: nextSlot(w, tzMidnightUtc(addDays(dateKeyInTz(w.tz, now), 1), w.tz)) } });
+      out.rescheduled++;
+      out.deferred++;
       continue;
     }
     const r = await sendFollowUp(orgId, c.id, c.campaignId, (last.step + 1) as 2 | 3 | 4);

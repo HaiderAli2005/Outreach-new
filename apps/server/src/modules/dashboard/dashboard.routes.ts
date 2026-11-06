@@ -6,3 +6,5 @@ dashboardRouter.get("/cockpit", c.cockpit);
 dashboardRouter.get("/nav-counts", c.navCounts);
 dashboardRouter.get("/budget", c.budget);
 dashboardRouter.get("/performance", c.performance);
+dashboardRouter.get("/campaigns", c.campaigns);
+dashboardRouter.get("/campaigns/:id", c.campaign);

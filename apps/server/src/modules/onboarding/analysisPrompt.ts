@@ -1,4 +1,4 @@
-export const PROMPT_VERSION = "analysis-prompt-v2";
+export const PROMPT_VERSION = "analysis-prompt-v3";
 
 export const ALLOWED_SENIORITIES = ["owner", "founder", "c_suite", "partner", "vp", "head", "director", "manager", "senior", "entry", "intern"] as const;
 export const ALLOWED_COMPANY_SIZES = ["1,10", "11,50", "51,200", "201,500", "501,1000", "1001,5000", "5001,"] as const;
@@ -81,7 +81,13 @@ ${JSON.stringify(ALLOWED_COMPANY_SIZES)}
 
 ### HOW TO CHOOSE THE AUDIENCE
 
-- Produce 3 to 6 audiences. Each one must be different enough to need its own email.
+- Produce 5 or 6 audiences: every distinct kind of buyer the business could sell to, not only the
+  obvious one. Each runs as its own campaign, so a wider first set shows sooner
+  which buyers reply. Think across buyer types (by industry,
+  by company size, by role, by use case) before settling.
+- Each one must be different enough to need its own email. Return 4 only when the business
+  truly sells to a narrow market, and 3 only when the site supports no more. Never pad with
+  near-duplicates: two audiences with the same titles at the same kind of company are one.
 - Rank them with \`priority\`, 1 being the one you would run first.
 - The strongest evidence, in order: job titles found in testimonials and case studies,
   the company's named customers, the industries the site says it serves, then your judgement.
@@ -271,7 +277,7 @@ verified or estimated, or how filters work. Leave an unclear field empty instead
 - Every proof, differentiator and evidence item uses a page url from above, and the page says it
 - Every number you wrote is on the pages
 - Competitors and named customers are named on the site, not from your own knowledge
-- 3 to 6 audiences, each one would need a different email
+- 5 or 6 audiences (3 or 4 only for a truly narrow market), each one would need a different email
 - Every title is a real job title, no duplicates across audiences
 - Every seniority and company size comes from the allowed lists
 - Countries are full names

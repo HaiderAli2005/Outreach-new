@@ -60,8 +60,6 @@ export function BudgetRange({
       />
       <div className="ticks">
         <span>${min}</span>
-        <span>$50</span>
-        <span>$100</span>
         <span>${max}</span>
       </div>
       <div className="presets">
@@ -75,10 +73,10 @@ export function BudgetRange({
   );
 }
 
-/** "500 emails a day · 125 new people a day" for a budget, as the server priced it. */
+/** "Up to 500 emails a day · replies are free" for a budget, as the server priced it. */
 export function budgetBuys(budget: string, cat: Pick<Catalogue, "budget">) {
   const stop = cat.budget.stops.find((x) => x.deciCents === budget);
-  return stop ? `${n0(stop.emails)} emails a day · ${n0(stop.people)} new people a day` : "";
+  return stop ? `Up to ${n0(stop.emails)} emails a day · replies are free` : "";
 }
 
 /**
@@ -238,7 +236,7 @@ export function DailyBudget({ mode = "editor", window: sendWindow }: { mode?: "l
     setDismissed(true);
   };
   const hitAt = nudge?.hitAt ? new Date(nudge.hitAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : null;
-  const summary = paused ? "Sending paused" : card.state === "uncapped" ? `Sending ${n0(card.emailsPerDay)} a day` : `Sending ${n0(card.emailsPerDay)} a day · ${usd(card.budget ?? "0")} a day`;
+  const summary = paused ? "Sending paused" : card.state === "uncapped" ? "No daily cap" : `Daily budget: up to ${usd(card.budget ?? "0")} a day`;
 
   const editor = (
     <>
@@ -286,6 +284,35 @@ export function DailyBudget({ mode = "editor", window: sendWindow }: { mode?: "l
     </>
   );
 
+  // The dashboard's editor: the line above already says the budget and the status box shows today's spend, so it is
+  // only the control: the slider and presets, what the budget buys, and pause.
+  const compact = (
+    <div className="bc-compact">
+      {canManage ? (
+        <div className="bc-range">
+          <label htmlFor="budget-line" className="sr">
+            Daily budget in dollars
+          </label>
+          <BudgetRange id="budget-line" cat={cat} value={value} onChange={setValue} onCommit={paused ? undefined : (dc) => commit(dc)} disabled={saving.isLoading} />
+        </div>
+      ) : null}
+      <div className="bc-compact-foot">
+        <span className="muted">{paused ? "No cold email goes out. Replies in your live conversations keep sending." : `${usd(value)} a day · ${budgetBuys(value, cat)}`}</span>
+        {canManage ? (
+          paused ? (
+            <Button size="sm" variant="primary" loading={saving.isLoading} onClick={() => commit(value, `Sending resumed at ${usd(value)} a day.`)}>
+              Resume at {usd(value)} a day
+            </Button>
+          ) : (
+            <button type="button" className="btn btn-sm btn-ghost" disabled={saving.isLoading} onClick={() => commit("0", "Sending paused. Your balance is untouched.")}>
+              Pause sending
+            </button>
+          )
+        ) : null}
+      </div>
+    </div>
+  );
+
   return (
     <div className={`engine glass budget-card${mode === "line" ? " line" : ""}`}>
       {mode === "line" ? (
@@ -301,7 +328,7 @@ export function DailyBudget({ mode = "editor", window: sendWindow }: { mode?: "l
           ) : null}
         </div>
       ) : null}
-      {open ? editor : null}
+      {open ? mode === "line" ? compact : editor : null}
       {nudge ? (
         <div className="bc-nudge" role="status">
           <p>

@@ -1,5 +1,5 @@
 import type { Catalogue, MarketView, OnboardingState } from "@/lib/types";
-import { n0 } from "@/lib/format";
+import { budgetOf, n0 } from "@/lib/format";
 import type { IconId } from "@/components/ui/Icon";
 import { AUDIENCE_ICON, type RailCardData, type RailTotal } from "./Rail";
 import type { RunState } from "./run";
@@ -125,7 +125,7 @@ export function railCards(args: {
   // Later steps can't be complete while the analysis is still running or hasn't finished: a re-run, or a new
   // domain, takes the rail back to step 3 and the later cards come back once it's done.
   if (live || !o.analyzedAt) return cards.filter((c) => !AFTER_ANALYSIS.has(c.key) || (c.key === "setup" && !!o.launchedAt));
-  if (draft && (max > 3 || docked.volume)) cards.push({ key: "volume", icon: "st-gauge", title: "Emails a day", detail: `${n0(draft.emails)} a day`, step: 3 });
+  if (draft && (max > 3 || docked.volume)) cards.push({ key: "volume", icon: "st-gauge", title: "Daily budget", detail: `${budgetOf(draft.emails)} a day`, step: 3 });
   if (state.funded && (max > 4 || docked.credits))
     cards.push({ key: "credits", icon: "st-card", title: "Your card", detail: `Added · ${state.credits.balance} balance`, step: 4 });
   if (setupDone || docked.setup || o.launchedAt) cards.push({ key: "setup", icon: "st-send", title: "Campaign", detail: o.launchedAt ? "Live · sending today" : "Starting", step: 5 });
@@ -137,8 +137,8 @@ export function runningTotal(cur: number, draft: Draft, cat: Catalogue, state: O
   if (state.funded) return { label: "Balance", value: state.credits.balance, note: `About ${n0(state.credits.emailsLeft)} emails.${state.credits.lastTopup ? "" : " Nothing has been charged."}` };
   const stop = stops.find((x) => x.emails === draft.emails);
   return {
-    label: "Emails a day",
-    value: n0(draft.emails),
-    note: stop ? `${stop.perDay} a day at ${cat.pricing.perEmail} an email, about ${stop.perMonth} a month. Prepaid, no plan, no fees.` : `${cat.pricing.perEmail} an email, prepaid. No plan, no fees.`,
+    label: "Daily budget",
+    value: stop ? `${stop.perDay} a day` : `${budgetOf(draft.emails)} a day`,
+    note: stop ? `Up to ${n0(stop.emails)} emails a day at ${cat.pricing.perEmail} an email. Replies are free. Prepaid, no plan, no fees.` : `${cat.pricing.perEmail} an email, prepaid. No plan, no fees.`,
   };
 }

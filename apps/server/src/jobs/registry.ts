@@ -53,5 +53,7 @@ export const JOBS: Record<string, JobDefinition> = {
   "inbox-history": { run: pool.runArchiveMailboxHistory, lockMs: 10 * 60_000, schedule: "*/30 * * * *", description: "Move mail that predates its mailbox out of the unmatched queue" },
   "pool-console": { run: pool.runCacheConsole, lockMs: 10 * 60_000, schedule: "*/15 * * * *", description: "Cache the ops console aggregates so /admin/pool never computes them on load" },
   "pool-dilution": { run: pool.runComputeDilution, lockMs: 10 * 60_000, schedule: "45 0 * * *", description: "Average customers per domain per day over the last week" },
+  // Spends money only on orders an operator confirmed, within the pool's per-batch and per-day limits.
+  "inboxkit-sync": { run: pool.runInboxKitSync, lockMs: 15 * 60_000, schedule: "*/10 * * * *", description: "InboxKit: place confirmed order batches, sign new mailboxes in, read warmup health, start the ladder, cancel retired mailboxes" },
   "credits-stale-holds": { run: pool.runReleaseStaleHolds, lockMs: 20 * 60_000, schedule: "15 1 * * *", description: "Return money held for sequences that ended without word from the sender" },
 };

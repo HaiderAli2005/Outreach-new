@@ -197,7 +197,7 @@ describe("cockpit", () => {
     const t = await createTenant();
     await prisma.orgSettings.update({ where: { organizationId: t.orgId }, data: { dailyBudgetDecicents: 20_000n, autopilotEnabled: true } });
     let c = (await api().get("/api/v1/dashboard/cockpit").set(t.auth).expect(200)).body.data;
-    expect(c.budget).toEqual({ emailsPerDay: 500, perDay: "$20", deciCents: "20000" });
+    expect(c.budget).toEqual({ emailsPerDay: 500, perDay: "$20", deciCents: "20000", spentToday: "$0.00" });
     expect(c.engine.state).toBe("capacity");
     expect(c.engine).not.toHaveProperty("timezone");
     expect((await api().get("/api/v1/dashboard/budget").set(t.auth).expect(200)).body.data.budget).toBe("20000");

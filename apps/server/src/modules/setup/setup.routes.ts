@@ -11,3 +11,6 @@ setupRouter.put("/sequence", requireManager, c.saveSequenceHandler);
 setupRouter.get("/targeting", c.targeting);
 setupRouter.post("/targeting/check", requireManager, c.targetingCheck);
 setupRouter.put("/targeting", requireManager, c.saveTargetingHandler);
+setupRouter.post("/targeting/audiences", requireManager, c.createAudienceHandler);
+setupRouter.post("/targeting/audiences/preview", requireManager, c.previewAudienceHandler);
+setupRouter.post("/targeting/audiences/import", requireManager, c.importAudiencesHandler);

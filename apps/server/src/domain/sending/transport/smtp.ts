@@ -25,10 +25,23 @@ const MAX_CONNECTIONS = 3;
 interface Pooled {
   transport: Transporter;
   lastUsed: number;
+  /** The access token the pool signed in with. A new token (they last an hour) means a new pool. */
+  token?: string;
+}
+
+/** SMTP sign-in: XOAUTH2 with an access token for a Google mailbox, otherwise username and password. */
+export function smtpAuth(c: MailboxCreds) {
+  return c.accessToken ? { type: "OAuth2" as const, user: c.username, accessToken: c.accessToken } : { user: c.username, pass: c.password };
+}
+
+/** IMAP sign-in, the same way. */
+export function imapAuth(c: MailboxCreds) {
+  return c.accessToken ? { user: c.username, accessToken: c.accessToken } : { user: c.username, pass: c.password };
 }
 
 /**
  * Direct SMTP out (nodemailer) and IMAP in (imapflow), against any mail host (Google Workspace, Microsoft 365, Zoho...).
+ * A Google mailbox connected with OAuth signs in with XOAUTH2 and a fresh access token instead of a password.
  *
  * One pooled SMTP connection set per mailbox, at most 3 at once, closed after 60 seconds idle. IMAP is read on short
  * connections (fetchNew), and the mailbox watcher (domain/sending/watch.ts) holds one more per mailbox in IDLE so a
@@ -43,16 +56,21 @@ export class SmtpTransport implements MailTransport {
   private transportFor(c: MailboxCreds): Transporter {
     const key = `${c.address}|${c.smtpHost}:${c.smtpPort}`;
     const hit = this.pools.get(key);
-    if (hit) {
+    if (hit && hit.token === c.accessToken) {
       hit.lastUsed = Date.now();
       return hit.transport;
+    }
+    if (hit) {
+      // The token was renewed: the old connections signed in with one that is about to expire.
+      hit.transport.close();
+      this.pools.delete(key);
     }
     const transport = nodemailer.createTransport({
       host: c.smtpHost,
       port: c.smtpPort,
       secure: c.smtpPort === 465,
       requireTLS: c.smtpPort !== 465 && c.smtpPort !== 25,
-      auth: { user: c.username, pass: c.password },
+      auth: smtpAuth(c),
       pool: true,
       maxConnections: MAX_CONNECTIONS,
       maxMessages: 100,
@@ -60,7 +78,7 @@ export class SmtpTransport implements MailTransport {
       greetingTimeout: 15_000,
       socketTimeout: 60_000,
     });
-    this.pools.set(key, { transport, lastUsed: Date.now() });
+    this.pools.set(key, { transport, lastUsed: Date.now(), token: c.accessToken });
     this.startSweeper();
     return transport;
   }
@@ -115,7 +133,7 @@ export class SmtpTransport implements MailTransport {
   }
 
   private imap(c: MailboxCreds) {
-    return new ImapFlow({ host: c.imapHost, port: c.imapPort, secure: c.imapPort === 993, auth: { user: c.username, pass: c.password }, logger: false, socketTimeout: 60_000 });
+    return new ImapFlow({ host: c.imapHost, port: c.imapPort, secure: c.imapPort === 993, auth: imapAuth(c), logger: false, socketTimeout: 60_000 });
   }
 
   async fetchNew(c: MailboxCreds, sinceUid = 0, limit = 200): Promise<InboundRaw[]> {
@@ -175,7 +193,7 @@ export class SmtpTransport implements MailTransport {
       host: c.imapHost,
       port: c.imapPort,
       secure: c.imapPort === 993,
-      auth: { user: c.username, pass: c.password },
+      auth: imapAuth(c),
       logger: false,
       connectionTimeout: 20_000,
       greetingTimeout: 15_000,
@@ -213,7 +231,7 @@ export class SmtpTransport implements MailTransport {
   /** Signs in over SMTP and IMAP at the same time, each with a firm time limit, and says why when it fails. */
   async verify(c: MailboxCreds): Promise<{ smtp: boolean; imap: boolean; error?: string }> {
     const smtpCheck = async (): Promise<string | null> => {
-      const t = nodemailer.createTransport({ host: c.smtpHost, port: c.smtpPort, secure: c.smtpPort === 465, auth: { user: c.username, pass: c.password }, connectionTimeout: VERIFY_CONNECT_MS, greetingTimeout: VERIFY_REPLY_MS, socketTimeout: VERIFY_REPLY_MS });
+      const t = nodemailer.createTransport({ host: c.smtpHost, port: c.smtpPort, secure: c.smtpPort === 465, auth: smtpAuth(c), connectionTimeout: VERIFY_CONNECT_MS, greetingTimeout: VERIFY_REPLY_MS, socketTimeout: VERIFY_REPLY_MS });
       try {
         await t.verify();
         return null;
@@ -224,7 +242,7 @@ export class SmtpTransport implements MailTransport {
       }
     };
     const imapCheck = async (): Promise<string | null> => {
-      const client = new ImapFlow({ host: c.imapHost, port: c.imapPort, secure: c.imapPort === 993, auth: { user: c.username, pass: c.password }, logger: false, connectionTimeout: VERIFY_CONNECT_MS, greetingTimeout: VERIFY_REPLY_MS, socketTimeout: VERIFY_REPLY_MS });
+      const client = new ImapFlow({ host: c.imapHost, port: c.imapPort, secure: c.imapPort === 993, auth: imapAuth(c), logger: false, connectionTimeout: VERIFY_CONNECT_MS, greetingTimeout: VERIFY_REPLY_MS, socketTimeout: VERIFY_REPLY_MS });
       try {
         await client.connect();
         return null;

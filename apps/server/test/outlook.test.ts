@@ -49,6 +49,33 @@ describe("sending outlook", () => {
     expect(o.window.opensAt?.toISOString()).toBe("2026-10-19T00:00:00.000Z");
   });
 
+  it("when today's new people are all out, says the next ones go when tomorrow's window opens, not at a far-off follow-up", async () => {
+    const { t, campaign } = await workspace();
+    // $0.04 a day: 1 email, so one new person a day.
+    await prisma.orgSettings.update({ where: { organizationId: t.orgId }, data: { dailyBudgetDecicents: 40n, sendingWindowStart: "09:00", sendingWindowEnd: "17:00" } });
+    const now = new Date("2026-10-28T12:00:00Z"); // Wednesday, midday UTC
+    const sent = await makeContact(t.orgId, sendable(campaign.id, { status: "CONTACTED", nextTouchAt: new Date("2026-11-02T09:00:00Z") }));
+    await prisma.send.create({ data: { organizationId: t.orgId, contactId: sent.id, isFirstTouch: true, status: "SENT", sentAt: new Date(now.getTime() - H) } });
+    // Approved and written, with no minute booked yet: the send run books them tomorrow.
+    await makeContact(t.orgId, sendable(campaign.id));
+    const o = await sendingOutlook(t.orgId, now);
+    expect(o.reason).toBe("daily-cap");
+    expect(o.next?.toISOString()).toBe("2026-10-29T09:00:00.000Z");
+    // And the dashboard can say it plainly: tomorrow from 9:00, one new person (the budget's share).
+    expect(o.newPeople).toEqual({ at: new Date("2026-10-29T09:00:00Z"), count: 1 });
+  });
+
+  it("says the next new people go today when today still has room and the window is ahead", async () => {
+    const { t, campaign } = await workspace();
+    await prisma.orgSettings.update({ where: { organizationId: t.orgId }, data: { dailyBudgetDecicents: 4000n, sendingWindowStart: "09:00", sendingWindowEnd: "17:00" } });
+    for (let i = 0; i < 3; i++) await makeContact(t.orgId, sendable(campaign.id));
+    const early = new Date("2026-10-28T06:00:00Z"); // Wednesday, before the window
+    expect(await sendingOutlook(t.orgId, early).then((o) => o.newPeople)).toEqual({ at: new Date("2026-10-28T09:00:00Z"), count: 3 });
+    // With autopilot off nothing is promised.
+    await prisma.orgSettings.update({ where: { organizationId: t.orgId }, data: { autopilotEnabled: false } });
+    expect((await sendingOutlook(t.orgId, early)).newPeople).toBeNull();
+  });
+
   it("reads the window in the prospect's zone", () => {
     const w = { tz: "America/New_York", days: [1, 2, 3, 4, 5], start: "09:00", end: "17:00" };
     // Wednesday 14 Oct 2026, 18:40 in New York: closed until 9am Thursday.

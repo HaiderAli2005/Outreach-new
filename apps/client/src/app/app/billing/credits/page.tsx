@@ -13,6 +13,7 @@ import { AutoReload } from "@/components/billing/AutoReload";
 import { parseDollars, usd } from "@/components/onboarding/sizing";
 import { CardSetupForm, ConfirmAutoReload, TopupPay, type PayHandle } from "@/components/onboarding/Payment";
 import { dateLong, money, n0, titleCase } from "@/lib/format";
+import { useBalanceSync } from "@/store/useBalanceSync";
 
 const PAY_TONE: Record<string, "g" | "b" | "v" | "y" | "r"> = { SUCCEEDED: "g", PROCESSING: "b", REQUIRES_PAYMENT: "y", FAILED: "r", REFUNDED: "v", PARTIALLY_REFUNDED: "v" };
 const HEALTH_TONE = { OK: "go", WARNING: "warm", PAUSED: "bad" } as const;
@@ -87,8 +88,10 @@ function CreditsPage() {
   const [cardSaved, setCardSaved] = useState(params.get("card") === "1");
   const [removeCard, removing] = useRemoveCardMutation();
   const [reverify, reverifying] = useReverifyMutation();
-  const [amount, setAmount] = useState("");
-  const [paying, setPaying] = useState(false);
+  // ?amount= (deci-cents) comes from the out-of-credit prompt: that top-up is chosen and its payment opens.
+  const asked = /^\d{1,9}$/.test(params.get("amount") ?? "") ? params.get("amount")! : "";
+  const [amount, setAmount] = useState(asked);
+  const [paying, setPaying] = useState(!!asked);
   const [closing, setClosing] = useState(false);
   const before = useRef<string | null>(null);
 
@@ -142,6 +145,11 @@ function CreditsPage() {
   }, [awaiting]);
 
   const budget = data?.dailyBudget && data.dailyBudget !== "0" ? data.dailyBudget : (cat?.budget.defaultDeciCents ?? "0");
+  const loaded = !!data;
+  useBalanceSync(data?.balance);
+  useEffect(() => {
+    if (asked && loaded) document.getElementById("topup")?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }, [asked, loaded]);
 
   return (
     <>
@@ -245,7 +253,7 @@ function CreditsPage() {
 
               {data.stage !== "unfunded" ? (
                 <>
-                  <div className="section-h">
+                  <div className="section-h" id="topup">
                     <h2>Add credits</h2>
                   </div>
                   {cat ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "./Icon";
 import { Button } from "./primitives";
@@ -26,14 +26,48 @@ function Portal({ children }: { children: ReactNode }) {
   return el ? createPortal(children, el) : null;
 }
 
-export function Modal({ title, onClose, children, actions, wide }: { title: ReactNode; onClose: () => void; children: ReactNode; actions?: ReactNode; wide?: boolean }) {
+/**
+ * Enter presses the dialog's main action: the last enabled button in its action row (every dialog puts it last).
+ * Enter keeps its own meaning in a textarea, on a focused button or link, inside a form (which submits itself), and
+ * while an input method is composing a character. A disabled main action means Enter does nothing.
+ */
+function enterPressesAction(e: React.KeyboardEvent<HTMLDivElement>, row: HTMLDivElement | null) {
+  if (e.key !== "Enter" || e.shiftKey || e.altKey || e.nativeEvent.isComposing || e.defaultPrevented || !row) return;
+  const t = e.target as HTMLElement;
+  if (t.closest("textarea, button, a, select, [contenteditable='true'], form, [role='listbox'], [role='combobox'], .ui-select-pop")) return;
+  const buttons = [...row.querySelectorAll<HTMLButtonElement>("button")];
+  const main = buttons.at(-1);
+  e.preventDefault();
+  if (main && !main.disabled && main.getAttribute("aria-busy") !== "true") main.click();
+}
+
+/** `bare` keeps the scrim, focus, Escape and click-outside, and leaves the whole inside to `children` (a dialog with its own layout). */
+export function Modal({ title, onClose, children, actions, wide, bare, className }: { title: ReactNode; onClose: () => void; children: ReactNode; actions?: ReactNode; wide?: boolean; bare?: boolean; className?: string }) {
   useEscape(onClose);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => ref.current?.focus(), []);
+  const row = useRef<HTMLDivElement>(null);
+  const focused = useRef(false);
+  // The portal mounts a render later than this component, so focus the dialog when it actually appears (an effect
+  // here would run while it is still missing). Focus inside the dialog is what lets Enter, Tab and Escape reach it.
+  const ref = useCallback((el: HTMLDivElement | null) => {
+    if (el && !focused.current && !el.contains(document.activeElement)) {
+      focused.current = true;
+      el.focus();
+    }
+  }, []);
   return (
     <Portal>
       <div className="modal-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-        <div ref={ref} tabIndex={-1} className={`modal glass${wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}>
+        <div
+          ref={ref}
+          tabIndex={-1}
+          className={`modal glass${wide ? " wide" : ""}${className ? ` ${className}` : ""}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label={typeof title === "string" ? title : undefined}
+          onKeyDown={(e) => enterPressesAction(e, row.current)}
+        >
+          {bare ? children : (
+          <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
             <h3>{title}</h3>
             <button type="button" className="btn btn-text btn-xs" onClick={onClose} aria-label="Close">
@@ -41,7 +75,13 @@ export function Modal({ title, onClose, children, actions, wide }: { title: Reac
             </button>
           </div>
           <div style={{ marginTop: 16 }}>{children}</div>
-          {actions ? <div className="actions">{actions}</div> : null}
+          {actions ? (
+            <div className="actions" ref={row}>
+              {actions}
+            </div>
+          ) : null}
+          </>
+          )}
         </div>
       </div>
     </Portal>

@@ -1,15 +1,17 @@
 "use client";
 
+import { OutOfCredit } from "@/components/billing/OutOfCredit";
+import { ThemeToggle } from "./ThemeToggle";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon, Mark, type IconId } from "@/components/ui/Icon";
 import { useAppDispatch, useAppSelector } from "@/store";
-import { api, refreshSession, useLaunchViewQuery, useNavCountsQuery } from "@/store/api";
+import { api, refreshSession, useCampaignsNavQuery, useLaunchViewQuery, useNavCountsQuery } from "@/store/api";
 import { sessionReceived } from "@/store/authSlice";
-import { useSignOut } from "./session";
-import { NoWorkspace } from "./NoWorkspace";
+import { FullPageLoader, useSignOut } from "./session";
 import { useInboxLive } from "./useInboxLive";
+import { RailToggle, useRailCollapse } from "./RailToggle";
 import type { NavCounts } from "@/lib/types";
 import { normDomain, validDomain } from "@/lib/format";
 import { SiteNotice, useSiteCheck } from "@/components/domain/SiteCheck";
@@ -38,7 +40,6 @@ const SETUP: NavItem[] = [
 
 const WORKSPACE: NavItem[] = [
   { href: "/app/billing/credits", label: "Credits", icon: "card" },
-  { href: "/app/settings", label: "Settings", icon: "gear" },
   { href: "/app/system", label: "System", icon: "pulse", badge: (c) => (c.systemAlerts ? { n: c.systemAlerts, tone: "bad" } : null) },
 ];
 
@@ -94,7 +95,9 @@ function CreditsBanner({ counts }: { counts: NavCounts }) {
     return (
       <div className="ap-banner warn">
         <span>
-          Your balance is running low: {counts.balance}, under two days at your daily budget.
+          {counts.runsOut
+            ? `Sending pauses ${counts.runsOut === "today" || counts.runsOut === "tomorrow" ? counts.runsOut : `on ${counts.runsOut}`} at your daily budget. Add credits to keep it going.`
+            : `Your balance is getting low: ${counts.balance} left. Add credits to keep sending.`}
         </span>
         <Link className="btn btn-sm btn-ghost" href="/app/billing/credits">
           Add credits
@@ -108,6 +111,10 @@ function CreditsBanner({ counts }: { counts: NavCounts }) {
 function LaunchBanner({ path }: { path: string }) {
   const { data } = useLaunchViewQuery(undefined, { pollingInterval: 120_000, skipPollingIfUnfocused: true });
   if (!data || data.approved || data.launchMode === "AUTO" || path.startsWith("/app/approve") || !data.ready) return null;
+  // The dashboard's own status card already says this, with the same numbers; two messages that disagree confuse.
+  if (path === "/app") return null;
+  // While the first people are still being written, "ready" would be premature.
+  if (data.launchMode === "APPROVE_FIRST_BATCH" && data.ready < data.needed && data.preparing > 0) return null;
   return (
     <div className="ap-banner">
       <span>
@@ -127,7 +134,8 @@ const TITLES: [string, string][] = [
   ["/app/setup/targeting", "Targeting"],
   ["/app/setup/sequence", "Email sequence"],
   ["/app/setup/schedule", "Sending schedule"],
-  ["/app/campaigns", "Campaign"],
+  ["/app/campaigns", "Campaigns"],
+  ["/app/campaign", "Campaign"],
   ["/app/suppression", "Suppress list"],
   ["/app/settings", "Settings"],
   ["/app/billing", "Credits"],
@@ -193,18 +201,6 @@ function AddWorkspace({ onDone }: { onDone: () => void }) {
   );
 }
 
-/** The sidebar-toggle glyph: a window with its left column marked off. */
-function PanelIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
-      <rect x="3.5" y="4.5" width="17" height="15" rx="3" />
-      <path d="M9.5 4.5v15" />
-    </svg>
-  );
-}
-
-const RAIL_KEY = "ap-rail-collapsed";
-
 /** Pages put their own action in the top bar (the Cockpit's Start / Stop outreach) through this slot. */
 export const TOP_ACTIONS_ID = "ap-top-actions";
 
@@ -215,12 +211,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { user, organizations, activeOrgId } = useAppSelector((s) => s.auth);
   const org = organizations.find((o) => o.id === activeOrgId) ?? null;
   const noOrg = organizations.length === 0;
-  const { data: counts } = useNavCountsQuery(undefined, { pollingInterval: 60_000, skipPollingIfUnfocused: true, skip: noOrg });
+  const { data: counts } = useNavCountsQuery(undefined, { pollingInterval: 60_000, skipPollingIfUnfocused: true, refetchOnFocus: true, skip: noOrg });
+  const { data: campaignsNav } = useCampaignsNavQuery(undefined, { pollingInterval: 120_000, skipPollingIfUnfocused: true, skip: noOrg });
   const [open, setOpen] = useState(false);
   const [wsOpen, setWsOpen] = useState(false);
   const [meOpen, setMeOpen] = useState(false);
-  // Desktop only: the rail folds down to icons. Remembered per browser.
-  const [mini, setMini] = useState(false);
+  const [mini, toggleMini] = useRailCollapse(() => (setWsOpen(false), setMeOpen(false)));
   const signOut = useSignOut();
   useReplyNotifications(counts);
   useInboxLive(!noOrg);
@@ -231,22 +227,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     setMeOpen(false);
   }, [path]);
 
+  // Without a workspace there is nothing for the app to show: every page and the whole menu belong to one. Setup
+  // starts from the domain, so anyone who lands here (a typed /app, an old bookmark, a deleted last workspace) goes there.
   useEffect(() => {
-    try {
-      setMini(localStorage.getItem(RAIL_KEY) === "1");
-    } catch {}
-  }, []);
-
-  function toggleMini() {
-    setWsOpen(false);
-    setMeOpen(false);
-    setMini((m) => {
-      try {
-        localStorage.setItem(RAIL_KEY, m ? "0" : "1");
-      } catch {}
-      return !m;
-    });
-  }
+    if (noOrg) router.replace("/onboarding");
+  }, [noOrg, router]);
 
   async function switchOrg(id: string) {
     setWsOpen(false);
@@ -278,6 +263,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     .map((w) => w.charAt(0).toUpperCase())
     .join("");
 
+  if (noOrg) return <FullPageLoader label="Opening setup" />;
+
   return (
     <div className={`ap-shell${mini ? " mini" : ""}`}>
       <aside className={`ap-rail${open ? " open" : ""}`} aria-label="Main navigation">
@@ -286,9 +273,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Mark />
             <span className="lb">Aperture</span>
           </Link>
-          <button type="button" className="ap-collapse" onClick={toggleMini} aria-label={mini ? "Expand sidebar" : "Collapse sidebar"} aria-pressed={mini} title={mini ? "Expand sidebar" : "Collapse sidebar"}>
-            <PanelIcon />
-          </button>
+          <RailToggle mini={mini} onClick={toggleMini} />
         </div>
         <div style={{ position: "relative" }}>
           <button type="button" className="ap-ws" title={mini ? (org?.primaryDomain ?? org?.name ?? "Workspace") : undefined} aria-expanded={wsOpen} aria-haspopup="menu" onClick={() => setWsOpen((o) => !o)}>
@@ -312,8 +297,36 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           ) : null}
         </div>
+        <div className="ap-rail-scroll">
         <div className="ap-sec">Outreach</div>
         <ul className="ap-nav">{OUTREACH.map(renderItem)}</ul>
+        {/* Each campaign has its own workspace; the section title opens the overview of all of them. */}
+        <div className="ap-sec ap-sec-link">
+          <Link href="/app/campaigns" aria-current={path === "/app/campaigns" ? "page" : undefined}>
+            Campaigns
+          </Link>
+        </div>
+        <ul className="ap-nav ap-camp-nav">
+          {(campaignsNav ?? []).map((cp) => {
+            const href = `/app/campaign/${encodeURIComponent(cp.id)}`;
+            const on = path === href;
+            const said = cp.state === "on" ? "sending" : cp.state === "paused" ? "paused" : "off";
+            return (
+              <li key={cp.id}>
+                <Link href={href} className={on ? "on" : ""} aria-current={on ? "page" : undefined} title={mini ? `${cp.name} (${said})` : said === "sending" ? undefined : `${cp.name} is ${said}`}>
+                  <span className={`ap-cdot is-${cp.state}`} aria-label={said} />
+                  <span className="lb">{cp.name}</span>
+                </Link>
+              </li>
+            );
+          })}
+          <li>
+            <Link href="/app/campaigns/new" className={`ap-new${path === "/app/campaigns/new" ? " on" : ""}`} title={mini ? "New campaign" : undefined}>
+              <Icon id="plus" />
+              <span className="lb">New campaign</span>
+            </Link>
+          </li>
+        </ul>
         <div className="ap-sec">Setup</div>
         <ul className="ap-nav">{SETUP.map(renderItem)}</ul>
         <div className="ap-sec">Workspace</div>
@@ -321,6 +334,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {WORKSPACE.map(renderItem)}
           {user?.isPlatformAdmin ? renderItem({ href: "/admin", label: "Admin console", icon: "shield" }) : null}
         </ul>
+        </div>
         <div className="ap-rail-foot">
           {meOpen ? (
             <div className="ap-pop" role="menu">
@@ -354,14 +368,16 @@ export function AppShell({ children }: { children: ReactNode }) {
           <h1>{titleFor(path)}</h1>
           <span className="sp" />
           <div className="ap-actions">
+            <ThemeToggle />
             <BalanceChip counts={counts} />
             <div id={TOP_ACTIONS_ID} className="ap-actions" />
           </div>
         </header>
         <main className="ap-view">
           {counts ? <CreditsBanner counts={counts} /> : null}
-          {!noOrg ? <LaunchBanner path={path} /> : null}
-          {noOrg ? <NoWorkspace /> : children}
+          {counts && activeOrgId ? <OutOfCredit counts={counts} orgId={activeOrgId} path={path} /> : null}
+          <LaunchBanner path={path} />
+          {children}
         </main>
       </div>
       {open ? <button type="button" className="ap-scrim" aria-label="Close menu" onClick={() => setOpen(false)} /> : null}

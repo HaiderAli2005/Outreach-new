@@ -16,7 +16,7 @@ const view = {
     ewma: [0, 0.5],
     domains: { REGISTERED: 0, AGING: 0, WARMING: 2, ACTIVE: 10, DEGRADED: 1, RETIRED: 0 },
     mailboxes: { CONNECTING: 0, ERROR: 0, WARMING: 6, ACTIVE: 30, REPLIES_ONLY: 3, RETIRED: 0 },
-    burnImpact: { mailboxes: 3, domains: 1, capacityLost: 90, monthlyCostCents: 1025, monthlyCost: "$10.25", liveConversations: 7, sequencesRunning: 12, customersAffected: 4 },
+    burnImpact: { mailboxes: 3, domains: 1, capacityLost: 90, monthlyCostCents: 1025, monthlyCost: "$10.25", liveConversations: 7, sequencesRunning: 12, customersAffected: 4, byDomain: [{ domain: "oldport.org", domainBurned: true, burnedOn: "2026-10-05T00:00:00Z", mailboxes: 3, liveConversations: 7, sequencesRunning: 12, customers: 4 }] },
   },
   health: { activeDomains: 10, activeMailboxes: 30, warmingDomains: 2, warmingMailboxes: 6, repliesOnlyMailboxes: 1, retiredThisMonth: 0 },
   burn: { degraded7: 1, degraded30: 2, ewmaWeeklyBurn: 0.5, burnRatePerMonth: "20.0%", predicted30: { total: 2, atRisk: 0, background: 2 }, weekly: [0, 1], dilution: 3, dilutionRegime: "weak" },
@@ -92,7 +92,14 @@ describe("Admin pool", () => {
     expect(screen.getByText("held 4 days")).toBeInTheDocument();
     expect(screen.getByText("in 9 days")).toBeInTheDocument();
     expect(screen.getByText("replies only")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /Sent, Capacity, Asked for/ })).toBeInTheDocument();
+    // Burned shows what is on the way to burning, and each burned domain with the conversations it still carries.
+    expect(screen.getByText("On the way to burning")).toBeInTheDocument();
+    expect(screen.getByText("No domain is on the way to burning.")).toBeInTheDocument();
+    const carrying = screen.getByText("Burned domains still carrying conversations").closest("section, div")!;
+    expect(carrying).toBeTruthy();
+    const row = screen.getAllByText("oldport.org").map((el) => el.closest("tr")).find((tr) => tr && within(tr).queryByText("7"))!;
+    expect(within(row).getByText("12")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Capacity, Asked for, Sent/ })).toBeInTheDocument();
     // What an operator acts on is on the default view too: switching how numbers are drawn never hides a control.
     expect(screen.getAllByRole("columnheader", { name: "Burned on" }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: "Activate now" })).toHaveLength(2);
@@ -141,23 +148,15 @@ describe("Admin pool", () => {
     await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ reason: "Big customer starts Monday" }));
   });
 
-  it("shows the real cost of an email, per email, per month and per domain, and lets prices be changed", async () => {
-    const { calls } = server();
+  it("shows the real cost of an email, per email, per month and per domain, without the AI and unit-price tables", async () => {
+    server();
     renderWithStore(<AdminPool />);
     expect(await screen.findByText(/Each email costs us \$0\.0160 and is charged \$0\.0400: 60% gross margin/)).toBeInTheDocument();
     expect(screen.getByText("Card fees (Stripe)")).toBeInTheDocument();
-    expect(screen.getByText("Reading a reply and drafting the answer")).toBeInTheDocument();
-    expect(screen.getByText(/12 counted AI calls have no token record/)).toBeInTheDocument();
     expect(screen.getByText("warming, day 3")).toBeInTheDocument();
     expect(screen.getByText("-$0.0563")).toBeInTheDocument();
     expect(document.body.textContent).toMatch(/1 domain costs more per email than we charge/);
-    // Mailbox and domain prices are editable like every other unit price.
-    expect(await screen.findByLabelText("Mailbox, per month ($)")).toHaveValue(4);
-    expect(screen.getByLabelText("Domain, per year ($)")).toHaveValue(15);
-    const fee = await screen.findByLabelText(/MillionVerifier, per address/);
-    await userEvent.clear(fee);
-    await userEvent.type(fee, "0.001");
-    await userEvent.click(screen.getByRole("button", { name: "Save prices" }));
-    await waitFor(() => expect(calls.find((c) => c.method === "PATCH" && c.path === "/admin/costs")?.body).toMatchObject({ verifyPerEmailUsd: 0.001 }));
+    expect(screen.queryByText("AI by job")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unit prices")).not.toBeInTheDocument();
   });
 });

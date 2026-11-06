@@ -26,7 +26,7 @@ export function Button({
 }
 
 export function Spinner({ dark }: { dark?: boolean }) {
-  return <span className="spinner" style={dark ? { borderColor: "rgba(255,240,220,.2)", borderTopColor: "var(--gold)" } : undefined} />;
+  return <span className="spinner" style={dark ? { borderColor: "rgb(var(--tw) / .2)", borderTopColor: "var(--gold)" } : undefined} />;
 }
 
 export function Field({ label, hint, error, children, htmlFor }: { label: ReactNode; hint?: ReactNode; error?: string | null; children: ReactNode; htmlFor?: string }) {
@@ -80,7 +80,8 @@ export function Seg<T extends string | number>({
   disabled,
 }: {
   value: T;
-  options: { value: T; label: ReactNode }[];
+  /** `count` shows as a small badge after the label (for example how many items each tab holds). */
+  options: { value: T; label: ReactNode; count?: number | null }[];
   onChange: (v: T) => void;
   label: string;
   size?: "sm";
@@ -91,6 +92,7 @@ export function Seg<T extends string | number>({
       {options.map((o) => (
         <button key={String(o.value)} type="button" aria-pressed={o.value === value} disabled={disabled} onClick={() => onChange(o.value)} style={{ padding: "0 12px" }}>
           {o.label}
+          {o.count != null ? <span className="seg-n">{o.count.toLocaleString("en-US")}</span> : null}
         </button>
       ))}
     </div>
@@ -224,6 +226,22 @@ export function ChipInput({ values, onChange, placeholder = "+ Add", label, max 
           placeholder={placeholder}
           aria-label={`Add to ${label}`}
           maxLength={80}
+          onPaste={(e) => {
+            // A pasted list ("a, b, c" or one per line) becomes one chip per item.
+            const text = e.clipboardData.getData("text");
+            if (!/[,\n;·]/.test(text)) return;
+            e.preventDefault();
+            const seen = new Set(values.map((x) => x.toLowerCase()));
+            const add: string[] = [];
+            for (const raw of text.split(/[,\n;·]+/)) {
+              const v = raw.trim().slice(0, 80);
+              if (v && !seen.has(v.toLowerCase())) {
+                seen.add(v.toLowerCase());
+                add.push(v);
+              }
+            }
+            if (add.length) onChange([...values, ...add].slice(0, max));
+          }}
           onKeyDown={(e) => {
             if (e.key !== "Enter" && e.key !== ",") return;
             e.preventDefault();
@@ -258,8 +276,11 @@ export function Avatar({ name, url, size = 36 }: { name: string | null; url?: st
       // eslint-disable-next-line @next/next/no-img-element
       <img src={url} alt="" width={size} height={size} onError={() => setBroken(true)} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover" }} referrerPolicy="no-referrer" />
     );
+  // Each person gets one of six warm tones from their name, so a list of people reads as people, not one gold row.
+  let h = 0;
+  for (const ch of name ?? "") h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return (
-    <span className="av avatar-g" style={{ width: size, height: size }} aria-hidden="true">
+    <span className={`av avatar-g av-t${h % 6}`} style={{ width: size, height: size }} aria-hidden="true">
       {ini || "?"}
     </span>
   );

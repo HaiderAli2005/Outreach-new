@@ -111,5 +111,18 @@ export function when(d: string | Date, tz?: string, now = new Date()): string {
   return `${at.toLocaleDateString("en-US", { weekday: "short", timeZone: tz })} ${t}`;
 }
 
+/** "Today", "Tomorrow" or "Monday" for a moment, read in `tz`. */
+export function dayName(d: string | Date, tz?: string, now = new Date()): string {
+  const at = new Date(d);
+  if (dayKey(at, tz) === dayKey(now, tz)) return "Today";
+  if (dayKey(at, tz) === dayKey(new Date(now.getTime() + 86_400_000), tz)) return "Tomorrow";
+  return at.toLocaleDateString("en-US", { weekday: "long", timeZone: tz });
+}
+
 /** "New York" from "America/New_York". */
 export const placeOf = (tz: string) => (tz.split("/").pop() ?? tz).replace(/_/g, " ");
+
+/** A daily email volume as its daily budget: every email is $0.04, so 100 a day is $4. */
+export const dollarsOf = (emails: number) => (emails * 4) / 100;
+/** "$4", "$10", "$200": the budget for a daily email volume. */
+export const budgetOf = (emails: number) => `$${dollarsOf(emails).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;

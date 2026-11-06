@@ -102,7 +102,7 @@ describe("onboarding", () => {
     );
     expect(o.groups).toHaveLength(1);
     expect(o.icp).toEqual({ industries: ["marketing agency"], titles: ["Founder", "Managing Director", "Finance Manager"], sizes: ["11,50"], regions: ["United Kingdom"] });
-    expect(o.analysis).toMatchObject({ promptVersion: "analysis-prompt-v2", confidence: 0.8, lowConfidence: false });
+    expect(o.analysis).toMatchObject({ promptVersion: "analysis-prompt-v3", confidence: 0.8, lowConfidence: false });
     expect(o.analysis.repairsMade).toEqual(expect.arrayContaining(['target_audience[0].company_sizes: dropped "bogus" (not in allowed list)', "target_audience[1]: dropped (no name)"]));
     const s = await prisma.orgSettings.findUniqueOrThrow({ where: { organizationId: t.orgId } });
     expect(s.valueProp).toBe("Invoicing software for marketing agencies");
@@ -226,7 +226,7 @@ describe("onboarding", () => {
     expect(transport.sent).toHaveLength(0);
     expect((await prisma.organization.findUniqueOrThrow({ where: { id: t.orgId } })).region).toBe("uk");
     const settings = await prisma.orgSettings.findUniqueOrThrow({ where: { organizationId: t.orgId } });
-    expect(settings).toMatchObject({ autopilotEnabled: true, dailyBudgetDecicents: 32_000n, dailySourceTarget: 200 });
+    expect(settings).toMatchObject({ autopilotEnabled: true, dailyBudgetDecicents: 32_000n, dailySourceTarget: 800 });
     void features;
   });
 
@@ -278,7 +278,7 @@ describe("onboarding", () => {
     expect(await prisma.creditLedger.count({ where: { organizationId: t.orgId } })).toBe(0);
   });
 
-  it("launches one search per audience, finds volume / 4 people a day, and never emails the customer or a competitor", async () => {
+  it("launches one search per audience, finds up to a full day of people, and never emails the customer or a competitor", async () => {
     const t = await createTenant();
     await api().post("/api/v1/onboarding/start").set(t.auth).send({ domain: "northwind.io" });
     await prisma.onboarding.update({
@@ -305,7 +305,8 @@ describe("onboarding", () => {
     expect(audiences[1].filters.person_titles).toEqual(["Finance Director"]);
     const settings = await prisma.orgSettings.findUniqueOrThrow({ where: { organizationId: t.orgId } });
     expect(settings.dailyBudgetDecicents).toBe(24_000n);
-    expect(settings.dailySourceTarget).toBe(150);
+    // Enough new people for a full day of 600 emails.
+    expect(settings.dailySourceTarget).toBe(600);
     const blocked = await prisma.blocklistEntry.findMany({ where: { organizationId: t.orgId, entryType: "DOMAIN" }, orderBy: { value: "asc" } });
     expect(blocked.map((b) => [b.value, b.reason])).toEqual([
       ["invoicely.com", "COMPETITOR"],

@@ -1,0 +1,294 @@
+/*
+ * Light theme for the website (the home page, #landing). theme-light.css sets the light tokens for the whole page;
+ * this file covers what the home page draws with fixed colours, in the same order the page reads.
+ *
+ * The product previews (the email being written, the step demos, the inbox draft, the deliverability orb) stay dark,
+ * as screenshots of the app: inside them the dark tokens are put back, so their text keeps its contrast.
+ */
+
+/* ---------- the hero: the same shading as the dark one, lit for a cream page ----------
+   Dark: gold light falls from the top centre and pools behind the search, cool side light at both edges, over a
+   charcoal that fades into the page. Light keeps every layer and its position, with a sand wash in place of the
+   charcoal, so the hero has the same depth instead of going flat. */
+html[data-theme="light"] .hero-sky {
+  background: radial-gradient(ellipse 58% 46% at 50% -6%, rgba(201, 152, 78, 0.34) 0%, rgba(209, 166, 101, 0.13) 42%, transparent 72%),
+    radial-gradient(ellipse 52% 26% at 50% 50%, rgba(207, 160, 92, 0.22) 0%, rgba(207, 160, 92, 0.07) 50%, transparent 76%),
+    radial-gradient(ellipse 40% 48% at -4% 34%, rgba(122, 104, 78, 0.13), transparent 70%),
+    radial-gradient(ellipse 40% 48% at 104% 30%, rgba(122, 104, 78, 0.11), transparent 70%),
+    linear-gradient(180deg, #d9ccb4 0%, #dfd4c1 26%, #e4dbcc 52%, #e7e1d6 76%, var(--bg) 100%);
+}
+html[data-theme="light"] .hero {
+  background: radial-gradient(900px 380px at 50% -140px, rgba(196, 146, 70, 0.16), transparent 70%), radial-gradient(700px 420px at 8% 0%, rgba(184, 138, 72, 0.1), transparent 70%);
+}
+html[data-theme="light"] #landing .hero-kicker {
+  color: var(--ink-2);
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(122, 84, 24, 0.16), 0 6px 18px -12px rgba(70, 50, 20, 0.35);
+}
+html[data-theme="light"] #landing .hero-kicker::before {
+  background: #b07d22;
+  box-shadow: 0 0 0 3px rgba(176, 125, 34, 0.16), 0 0 10px rgba(176, 125, 34, 0.45);
+}
+html[data-theme="light"] h1.display {
+  color: var(--ink);
+}
+html[data-theme="light"] h1.display .l2 > span {
+  background: linear-gradient(180deg, #b0812f 0%, #7a5418 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+html[data-theme="light"] .lede {
+  color: var(--ink-2);
+}
+
+/* the domain search, in the hero and the closing card */
+html[data-theme="light"] #landing .sbar {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.66));
+  box-shadow: inset 0 0 0 1px rgba(70, 54, 30, 0.14), inset 0 1px 0 #fff, 0 10px 26px -18px rgba(70, 50, 20, 0.45);
+}
+html[data-theme="light"] #landing .sbar:focus-within {
+  box-shadow: inset 0 0 0 1px rgba(148, 103, 31, 0.6), inset 0 1px 0 #fff, 0 0 0 4px rgba(148, 103, 31, 0.1);
+}
+html[data-theme="light"] #landing .sbar input {
+  color: var(--ink);
+}
+html[data-theme="light"] #landing .sbar input::placeholder {
+  color: rgba(20, 20, 19, 0.38);
+}
+html[data-theme="light"] #landing .sbar-ico {
+  color: rgba(20, 20, 19, 0.45);
+}
+html[data-theme="light"] #landing .sring .proof {
+  color: var(--ink-3);
+}
+html[data-theme="light"] #landing .sring .proof i {
+  background: var(--hair-2);
+}
+
+/* ---------- the navbar ---------- */
+html[data-theme="light"] #landing .nav-in.lg .nav-links a:hover,
+html[data-theme="light"] #landing .nav-in.lg .btn-text {
+  color: var(--ink);
+}
+/* Start setup is the same gold call to action as Analyze and Open app, not a black button. */
+html[data-theme="light"] #landing .nav-in.lg .btn-glass {
+  color: var(--on-gold);
+  background: var(--grad);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.5), 0 0 0 1px rgb(168 119 8 / 0.55), 0 6px 16px -8px rgb(168 119 8 / 0.55);
+}
+html[data-theme="light"] #landing .nav-in.lg .btn-glass:hover {
+  background: var(--grad);
+  filter: brightness(1.04) saturate(1.05);
+}
+html[data-theme="light"] #landing .nav .ap-theme {
+  background: rgba(255, 255, 255, 0.7);
+}
+html[data-theme="light"] #landing .nav .ap-theme:hover {
+  background: #fff;
+}
+
+/* ---------- fixed light text that sits on the light page ---------- */
+/* The big numbers in the fact strip: the dark page's pale-gold fill would vanish on cream. */
+html[data-theme="light"] #landing .lp-fact-n .num {
+  background: linear-gradient(180deg, #2a2620 10%, #94671f);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+html[data-theme="light"] #landing .qa summary:hover {
+  color: var(--ink);
+}
+html[data-theme="light"] #landing .fl-main {
+  color: var(--ink-2);
+  border-color: rgba(148, 103, 31, 0.35);
+}
+html[data-theme="light"] #landing .fl-rp p {
+  color: var(--ink-3);
+}
+html[data-theme="light"] #landing .lp-rep .chip-s.b {
+  color: var(--gold);
+}
+/* the inbox preview: a clean cream well, white avatars, and the selected reply lifted with a gold marker */
+html[data-theme="light"] #landing .lp-inbox {
+  background: #f8f5ef;
+  box-shadow: inset 0 0 0 1px rgba(60, 44, 20, 0.08);
+}
+html[data-theme="light"] #landing .lp-rep[data-sel] {
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(60, 44, 20, 0.1), inset 3px 0 0 #b07d22, 0 1px 2px rgba(60, 44, 20, 0.05), 0 8px 18px -12px rgba(60, 44, 20, 0.25);
+}
+html[data-theme="light"] #landing .lp-av {
+  color: var(--ink-2);
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(60, 44, 20, 0.12), 0 1px 2px rgba(60, 44, 20, 0.06);
+}
+html[data-theme="light"] #landing .lp-rep[data-sel] .lp-av {
+  color: #7a5418;
+  background: rgba(148, 103, 31, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(148, 103, 31, 0.3);
+}
+html[data-theme="light"] #landing .fl-dom {
+  background: rgba(255, 255, 255, 0.6);
+}
+html[data-theme="light"] #landing .proof-link {
+  color: var(--ink-2);
+  text-decoration-color: rgba(20, 20, 19, 0.25);
+}
+html[data-theme="light"] #landing .proof-link:hover {
+  color: var(--ink);
+}
+
+/* ---------- the light palette for the website ----------
+   A light warm off-white page, near-white cards with a fine hairline and a soft shadow, a frosted white navbar.
+   Gold stays the accent only. (The dark page's glass highlights are white, which reads as nothing on cream.) */
+html[data-theme="light"]:has(#landing) {
+  --bg: #f4f0e8;
+}
+html[data-theme="light"]:has(#landing) body {
+  background: var(--bg);
+}
+html[data-theme="light"] #landing :is(.console, .lp-facts-in, .lp-step, .lp-cell, .lp-point, .orbit-card, .price-card, .lp-incl, .lp-help, .cta) {
+  --glass-fill: linear-gradient(180deg, #fffefb, #fcf9f3);
+  background: var(--glass-fill) !important;
+  box-shadow: inset 0 0 0 1px rgba(60, 44, 20, 0.085), inset 0 1px 0 #fff, 0 1px 2px rgba(60, 44, 20, 0.05), 0 22px 44px -26px rgba(60, 44, 20, 0.28) !important;
+}
+html[data-theme="light"] #landing .lp-step[data-on] {
+  box-shadow: inset 0 0 0 1px rgba(148, 103, 31, 0.34), inset 0 1px 0 #fff, 0 1px 2px rgba(60, 44, 20, 0.05), 0 30px 60px -30px rgba(60, 44, 20, 0.34) !important;
+}
+/* Liquid glass, same as the dark page: a thin clear fill so the page shows (bent) through it, with white rim
+   highlights instead of the dark theme's --hw ones, which turn brown on the light palette. Don't make it opaque:
+   the lens stays on while scrolling (liquidGlass.ts, steady), so content bending under the bar is the effect. */
+html[data-theme="light"] #landing .nav-in.glass.lg {
+  --glass-fill: rgba(255, 253, 248, 0.22);
+  box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, 0.9), inset 0 -1px 0 rgba(255, 255, 255, 0.45), inset 1.5px 0 1px -1px rgba(255, 255, 255, 0.7), inset -1.5px 0 1px -1px rgba(255, 255, 255, 0.5), inset 0 0 0 1px rgba(60, 44, 20, 0.07), inset 0 0 16px rgba(255, 255, 255, 0.28), 0 12px 28px -12px rgba(60, 44, 20, 0.28);
+}
+html[data-theme="light"] #landing .nav-in.glass.lg::before {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.12) 40%, rgba(255, 255, 255, 0.06) 70%, rgba(255, 255, 255, 0.4));
+}
+html[data-theme="light"] #landing .nav-in.glass.lg::after {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.32), transparent 42%);
+}
+html[data-theme="light"] #landing .nav-in.lg .nav-links a {
+  color: var(--ink-2);
+}
+/* the footer rule and section dividers on the lighter page */
+html[data-theme="light"] #landing .lp-foot {
+  border-color: rgba(60, 44, 20, 0.1);
+}
+/* the free-credit badge under the hero search */
+html[data-theme="light"] #landing .sring .proof-gift {
+  color: #7a5418;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 248, 234, 0.75));
+  box-shadow: inset 0 0 0 1px rgba(148, 103, 31, 0.3), 0 4px 12px -8px rgba(120, 84, 24, 0.4);
+}
+html[data-theme="light"] #landing .sring .proof-gift svg {
+  color: #a8761f;
+}
+
+/* ---------- the hero "Live outbound" console, on cream ----------
+   Its edges, dividers, ring track and lines were white at a few percent, which only shows on the dark page. */
+html[data-theme="light"] #landing .hero .chip-s.b {
+  color: #7a5418;
+  background: rgba(148, 103, 31, 0.12);
+}
+html[data-theme="light"] #landing .fl-dom {
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(60, 44, 20, 0.1), 0 1px 2px rgba(60, 44, 20, 0.05);
+  color: var(--ink-3);
+}
+html[data-theme="light"] #landing .fl-rp {
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(60, 44, 20, 0.1), 0 1px 2px rgba(60, 44, 20, 0.05);
+}
+html[data-theme="light"] #landing .fl-ln path { stroke: rgba(148, 103, 31, 0.3); }
+html[data-theme="light"] #landing .fl-ln circle { fill: #b07d22; }
+html[data-theme="light"] #landing .fl-ga-bg { stroke: rgba(60, 44, 20, 0.1); }
+html[data-theme="light"] #landing .fl-ga-on { stroke: #b07d22; }
+html[data-theme="light"] #landing .fl-lb,
+html[data-theme="light"] #landing .fl-ga small,
+html[data-theme="light"] #landing .fl-bt div { color: var(--ink-3); }
+html[data-theme="light"] #landing .fl-bt { border-top-color: rgba(60, 44, 20, 0.1); }
+html[data-theme="light"] #landing .fl-bt div + div { box-shadow: inset 1px 0 0 rgba(60, 44, 20, 0.08); }
+@media (max-width: 700px) {
+  html[data-theme="light"] #landing .fl-bt div:nth-child(3) { box-shadow: none; }
+}
+
+/* ---------- product previews on cream ----------
+   The previews used to keep the dark theme inside them, which made black slabs on a light page. In light mode each
+   preview is a cream "screen" well inside its white card; rows and tiles inside it are white with a fine edge, gold
+   stays the accent, and every white-at-a-few-percent fill from the dark design gets its light twin here. */
+html[data-theme="light"] #landing :is(.m-card, .lp-week, .lp-slack, .lp-csv) {
+  background: #f6f2ea;
+  box-shadow: inset 0 0 0 1px rgba(60, 44, 20, 0.1);
+}
+html[data-theme="light"] #landing .lp-block div {
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(60, 44, 20, 0.1), 0 1px 2px rgba(60, 44, 20, 0.05);
+}
+/* the reply being drafted: a white sheet with a gold edge, it is the one live thing in its card */
+html[data-theme="light"] #landing .lp-draft {
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(148, 103, 31, 0.3), 0 1px 2px rgba(60, 44, 20, 0.05), 0 16px 32px -20px rgba(60, 44, 20, 0.28);
+}
+html[data-theme="light"] #landing .lp-draft blockquote { border-left-color: rgba(60, 44, 20, 0.16); }
+
+/* step 1: the domain field and pages read */
+html[data-theme="light"] #landing .m-url { background: #ffffff; box-shadow: inset 0 0 0 1px rgba(60, 44, 20, 0.14), 0 1px 2px rgba(60, 44, 20, 0.05); }
+html[data-theme="light"] #landing .m-scan-row { border-top-color: rgba(60, 44, 20, 0.08); }
+/* step 2: audience chips */
+html[data-theme="light"] #landing .m-chips span { color: #7a5418; background: rgba(148, 103, 31, 0.08); box-shadow: inset 0 0 0 1px rgba(148, 103, 31, 0.24); }
+/* step 3: preview number and email */
+html[data-theme="light"] #landing .m-note { background: rgba(60, 44, 20, 0.06); }
+html[data-theme="light"] #landing .m-mail { background: #ffffff; box-shadow: inset 0 0 0 1px rgba(60, 44, 20, 0.1), 0 1px 2px rgba(60, 44, 20, 0.05); }
+html[data-theme="light"] #landing .m-mail i { background: rgba(60, 44, 20, 0.09); }
+html[data-theme="light"] #landing .m-tk { color: #7a5418; background: rgba(148, 103, 31, 0.12); }
+/* step 4: emails a day slider and its three numbers */
+html[data-theme="light"] #landing .m-track { background: rgba(60, 44, 20, 0.1); }
+html[data-theme="light"] #landing .m-track i { background: linear-gradient(90deg, #c99a52, #dc9d38); }
+html[data-theme="light"] #landing .m-track i::after { background: #ffffff; box-shadow: 0 0 0 1px rgba(60, 44, 20, 0.16), 0 0 0 5px rgba(176, 125, 34, 0.16), 0 2px 6px rgba(60, 44, 20, 0.2); }
+html[data-theme="light"] #landing :is(.m-vol-out div, .m-dom) { background: #ffffff; box-shadow: inset 0 0 0 1px rgba(60, 44, 20, 0.1), 0 1px 2px rgba(60, 44, 20, 0.05); }
+/* step 6: the sending ramp */
+html[data-theme="light"] #landing .m-bars i { background: linear-gradient(180deg, #dc9d38, rgba(176, 125, 34, 0.22)); }
+
+/* after-launch cards */
+html[data-theme="light"] #landing .lp-inbox-bar { border-bottom-color: rgba(60, 44, 20, 0.08); }
+html[data-theme="light"] #landing .lp-inbox-bar span[data-on] { background: #ffffff; box-shadow: inset 0 0 0 1px rgba(60, 44, 20, 0.1); }
+html[data-theme="light"] #landing .lp-week-bar { background: rgba(60, 44, 20, 0.1); }
+html[data-theme="light"] #landing .lp-week-bar i { background: linear-gradient(90deg, #c99a52, #dc9d38); }
+html[data-theme="light"] #landing .lp-week-ok { background: rgba(35, 130, 79, 0.08); box-shadow: inset 0 0 0 1px rgba(35, 130, 79, 0.28); }
+html[data-theme="light"] #landing .lp-block b { background: rgba(194, 68, 27, 0.08); }
+html[data-theme="light"] #landing .lp-slack-av { background: rgba(148, 103, 31, 0.1); }
+html[data-theme="light"] #landing .lp-slack-kv span { background: #ffffff; box-shadow: inset 0 0 0 1px rgba(60, 44, 20, 0.1); }
+
+/* hero console: the email being written is a white sheet with a gold edge, like the reply draft */
+html[data-theme="light"] #landing .fl-mail {
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(148, 103, 31, 0.3), 0 1px 2px rgba(60, 44, 20, 0.05), 0 24px 48px -28px rgba(60, 44, 20, 0.35);
+}
+html[data-theme="light"] #landing :is(.fl-mh, .fl-ft) { color: var(--ink-3); }
+html[data-theme="light"] #landing .fl-to { color: var(--ink-2); }
+html[data-theme="light"] #landing .fl-sj { border-bottom-color: rgba(60, 44, 20, 0.08); }
+html[data-theme="light"] #landing .fl-bd { color: var(--ink-2); }
+html[data-theme="light"] #landing .fl-bd mark { color: #7a5418; background: rgba(148, 103, 31, 0.12); }
+html[data-theme="light"] #landing .fl-ft span { background: rgba(60, 44, 20, 0.06); }
+
+/* deliverability orbit: a white core with a gold edge and white labels instead of black ones */
+html[data-theme="light"] #landing .orbit .ring { border-color: rgba(148, 103, 31, 0.22); }
+html[data-theme="light"] #landing .sat span {
+  color: var(--ink-2);
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(60, 44, 20, 0.12), 0 6px 16px -8px rgba(60, 44, 20, 0.3);
+}
+html[data-theme="light"] #landing .core {
+  color: var(--ink);
+  background: radial-gradient(circle at 50% 30%, #ffffff, #f6efe2 72%);
+  box-shadow: inset 0 0 0 1px rgba(148, 103, 31, 0.35), 0 18px 40px -18px rgba(148, 103, 31, 0.45), 0 0 0 10px rgba(176, 125, 34, 0.05);
+}
+
+
+/* the new step previews on cream: white rows inside the cream screen, the deeper gold for sent bars */
+html[data-theme="light"] #landing :is(.m-person, .m-av) { background: #ffffff; box-shadow: inset 0 0 0 1px rgba(60, 44, 20, 0.1), 0 1px 2px rgba(60, 44, 20, 0.05); }
+html[data-theme="light"] #landing .m-aud-h { border-bottom-color: rgba(60, 44, 20, 0.08); }
+html[data-theme="light"] #landing .m-line-track { border-bottom-color: rgba(60, 44, 20, 0.12); }
+html[data-theme="light"] #landing .m-line-track i { background: rgba(60, 44, 20, 0.14); }
+html[data-theme="light"] #landing .m-line-track i[data-sent] { background: linear-gradient(180deg, #dc9d38, #b07d22); }
+html[data-theme="light"] #landing .m-badge { color: #1a1206; }

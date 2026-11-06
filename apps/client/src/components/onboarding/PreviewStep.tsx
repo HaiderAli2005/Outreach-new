@@ -8,7 +8,7 @@ import type { BuyerGroup, Catalogue, MarketView, OnboardingState, VolumeOptions 
 import { GroupCard, type SaveKeywords } from "./AnalysisStep";
 import { Counter } from "./live/motion";
 import { n0 } from "@/lib/format";
-import { monthsTxt, WORK_DAYS } from "./sizing";
+import { StepCta } from "./StepCta";
 
 function withTokens(text: string): ReactNode[] {
   return text.split(/(\{\{\w+\}\})/g).map((p, i) =>
@@ -47,8 +47,14 @@ function Bars({ title, data }: { title: string; data: [string, number][] }) {
 
 const sizeBand = (n: number | null) => (n == null ? "" : n <= 10 ? "1 to 10 staff" : n <= 50 ? "11 to 50 staff" : n <= 200 ? "51 to 200 staff" : n <= 1000 ? "201 to 1,000 staff" : "1,000+ staff");
 
+/** How many example companies and people show before "Show all". */
+const COMPANIES_SHOWN = 24;
+const PEOPLE_SHOWN = 12;
+
 export function MarketTabs({ market, people, audience, initialTab = "companies" }: { market: MarketView; people: number | null; audience: string | null; initialTab?: "companies" | "people" }) {
   const [tab, setTab] = useState<"companies" | "people">(initialTab);
+  const [allCompanies, setAllCompanies] = useState(false);
+  const [allPeople, setAllPeople] = useState(false);
   const companies = (market.companies ?? []).filter((c) => !audience || c.audienceId === audience);
   const prospects = market.prospects.filter((p) => !audience || !p.audienceId || p.audienceId === audience);
   const hasCountry = prospects.some((p) => p.country);
@@ -59,7 +65,7 @@ export function MarketTabs({ market, people, audience, initialTab = "companies" 
     <div className="mk-tabs">
       <div className="mk-tabbar" role="tablist" aria-label="Matching companies and people">
         <button type="button" role="tab" id="mk-tab-companies" aria-selected={tab === "companies"} aria-controls="mk-panel" onClick={pick("companies")}>
-          Companies <span>{companies.length}</span>
+           Companies <span>{companies.length}</span>
         </button>
         <button type="button" role="tab" id="mk-tab-people" aria-selected={tab === "people"} aria-controls="mk-panel" onClick={pick("people")}>
           People <span>{prospects.length}</span>
@@ -69,7 +75,9 @@ export function MarketTabs({ market, people, audience, initialTab = "companies" 
         {tab === "companies" ? (
           companies.length ? (
             <>
-              <p className="fine mk-note">Examples from a sample of {market.sample.size} matching people, not a count of every company in your market.</p>
+              <p className="fine mk-note">
+                {companies.length} example {companies.length === 1 ? "company" : "companies"} where the {market.sample.size} people in our sample work. This is not a count of every company in your market.
+              </p>
               <ul className={`co-list${rich ? "" : " lean"}`}>
                 <li className="co-row co-head" aria-hidden="true">
                   <span />
@@ -87,7 +95,7 @@ export function MarketTabs({ market, people, audience, initialTab = "companies" 
                     </>
                   )}
                 </li>
-                {companies.slice(0, 24).map((c) => (
+                {(allCompanies ? companies : companies.slice(0, COMPANIES_SHOWN)).map((c) => (
                   <li key={`${c.audienceId}-${c.domain ?? c.name}`} className="co-row">
                     <span className="co-av" aria-hidden="true">
                       {c.name.charAt(0)}
@@ -111,6 +119,11 @@ export function MarketTabs({ market, people, audience, initialTab = "companies" 
                   </li>
                 ))}
               </ul>
+              {companies.length > COMPANIES_SHOWN ? (
+                <button type="button" className="btn btn-text btn-sm mk-more" aria-expanded={allCompanies} onClick={() => setAllCompanies((v) => !v)}>
+                  {allCompanies ? "Show fewer" : `Show all ${companies.length} companies`}
+                </button>
+              ) : null}
             </>
           ) : (
             <p className="fine mk-note">Company examples appear after the next market count.</p>
@@ -118,7 +131,8 @@ export function MarketTabs({ market, people, audience, initialTab = "companies" 
         ) : prospects.length ? (
           <>
             <p className="fine mk-note">
-              {prospects.length} of {people != null ? n0(people) : "the"} people who match. Last names are hidden and no email address is shown before your campaign starts.
+              {n0(prospects.length)} {prospects.length === 1 ? "person" : "people"} from a sample of {n0(Math.max(market.sample.size, prospects.length))}
+              {people != null ? `, out of ${n0(people)} who match` : ""}. Last names are hidden and no email address is shown before your campaign starts.
             </p>
             <div className="pt-wrap">
               <table className="pt">
@@ -132,7 +146,7 @@ export function MarketTabs({ market, people, audience, initialTab = "companies" 
                   </tr>
                 </thead>
                 <tbody>
-                  {prospects.map((r, i) => (
+                  {(allPeople ? prospects : prospects.slice(0, PEOPLE_SHOWN)).map((r, i) => (
                     <tr key={i}>
                       <td data-l="Name">
                         <span className="pt-av">{r.firstName.charAt(0)}</span>
@@ -165,6 +179,11 @@ export function MarketTabs({ market, people, audience, initialTab = "companies" 
                 </tbody>
               </table>
             </div>
+            {prospects.length > PEOPLE_SHOWN ? (
+              <button type="button" className="btn btn-text btn-sm mk-more" aria-expanded={allPeople} onClick={() => setAllPeople((v) => !v)}>
+                {allPeople ? "Show fewer" : `Show all ${n0(prospects.length)} people`}
+              </button>
+            ) : null}
           </>
         ) : (
           <p className="fine mk-note">No sample people to show yet.</p>
@@ -234,26 +253,21 @@ export function PreviewStep({
   };
 
   const people = market?.people ?? null;
-  const pool = market?.verified ?? market?.people ?? null;
-  // Paces priced by the server; a pace the pool can't take yet is shown, disabled, with when it can.
-  const rows = cat.volume.presets.map((v) => {
-    const stop = cat.volume.stops.find((x) => x.emails === v);
-    const ppm = (stop?.people ?? 0) * WORK_DAYS;
-    const preset = volume?.presets.find((p) => p.emails === v);
-    return { v, stop, ppm, months: pool && ppm ? pool / ppm : null, disabled: !volume?.ready || !!preset?.disabled, reason: volume?.ready ? (preset?.reason ?? null) : "capacity is being set up" };
-  });
-  const rec = volume?.recommended ?? null;
   const count = (id: string) => market?.groups.find((x) => x.id === id)?.count;
   const busy = updateState.isLoading || keywordState.isLoading;
   const prospectCount = (market?.prospects ?? []).filter((x) => !audience || !x.audienceId || x.audienceId === audience).length;
-  const show = { audiences: focus === "all" || focus === "audiences", market: focus === "all" || focus === "market", tabs: focus === "all" || focus === "prospects", plan: focus === "all" || focus === "market" };
+  const show = { audiences: focus === "all" || focus === "audiences", market: focus === "all" || focus === "market", tabs: focus === "all" || focus === "prospects" };
 
   return (
     <>
       <header className="an-head pv-head">
         <span className="nosend">
-          <Icon id="shield" />
-          Free overview · nothing is sent until you launch
+          <span className="nosend-ic" aria-hidden="true">
+            <Icon id="shield" />
+          </span>
+          <b>Free overview</b>
+          <i aria-hidden="true" />
+          <span className="nosend-sub">Nothing is sent until you launch</span>
         </span>
         {focus === "prospects" ? (
           <>
@@ -284,11 +298,12 @@ export function PreviewStep({
             </h1>
             <p className="an-p">
               {focus === "market"
-                ? "How many people match, how many have a verified work email, where they are, and how long your market lasts at each sending pace."
-                : "Tune your audiences, check your market, and pick a sending pace that fits."}
+                ? "How many people match, how many have a verified work email, and who they are. You set your daily budget in the next step."
+                : "Tune your audiences and check your market. You set your daily budget in the next step."}
             </p>
           </>
         )}
+        <StepCta />
         {focus !== "all" ? (
           <div className="pv-all">
             <Button size="sm" icon="list" onClick={onShowAll}>
@@ -439,54 +454,6 @@ export function PreviewStep({
             </div>
           </div>
         )}
-      </section>
-      ) : null}
-
-      {show.plan ? (
-      <section className="pv-card">
-        <div className="pv-h">
-          <div>
-            <h2>Recommended pace</h2>
-            <p>
-              {pool
-                ? `How fast you'd work through your ${n0(pool)} ${market?.verified != null ? "verified " : ""}contacts. Each person gets 4 emails over two weeks, on 22 sending days a month.`
-                : "Pick a sending pace. Each person gets 4 emails over two weeks, on 22 sending days a month."}
-            </p>
-          </div>
-        </div>
-        <div className="rp" role="radiogroup" aria-label="Emails a day">
-          <div className="rp-row rp-head" aria-hidden="true">
-            <span />
-            <span>Emails a day</span>
-            <span>New people a month</span>
-            <span>Your market lasts</span>
-            <span />
-          </div>
-          {rows.map((r) => (
-            <button key={r.v} type="button" className="rp-row" role="radio" aria-checked={r.v === emails} disabled={r.disabled} title={r.disabled ? (r.reason ?? undefined) : undefined} onClick={() => onEmails(r.v)}>
-              <span className="rp-dot" />
-              <span className="rp-v">
-                <b>{n0(r.v)}</b>
-                <small>{r.disabled && r.reason ? r.reason : `${r.stop?.perDay ?? ""} a day`}</small>
-              </span>
-              <span className="rp-p">{n0(r.ppm)}</span>
-              <span className="rp-m">
-                {r.months != null ? (
-                  <>
-                    <span className="rp-bar">
-                      <i style={{ width: `${Math.min(1, r.months / 12) * 100}%` }} />
-                    </span>
-                    {monthsTxt(r.months)}
-                  </>
-                ) : (
-                  <span className="fine">Needs market size</span>
-                )}
-              </span>
-              <span className="rp-tag">{r.v === rec ? "Recommended" : ""}</span>
-            </button>
-          ))}
-        </div>
-        <p className="rp-note">We recommend a first pace that leaves about three months of new people and that we can deliver for you today. A first campaign that works at a few hundred a day beats one that starts at the top.</p>
       </section>
       ) : null}
     </>

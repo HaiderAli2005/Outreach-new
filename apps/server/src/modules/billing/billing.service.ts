@@ -1,6 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 import { conflict, notFound, unprocessable } from "../../lib/errors.js";
-import { env, features } from "../../config/env.js";
+import { env, features, webOrigins } from "../../config/env.js";
 import { requireStripe, getStripe } from "./stripe.client.js";
 import type Stripe from "stripe";
 import { emailsFor, formatUsd, lastsText, MIN_TOPUP, toStripeCents, topupOptions, validateTopup, type DeciCents } from "../../domain/money.js";
@@ -154,6 +154,38 @@ export async function startSetup(orgId: string, email: string, purpose: "card" |
   );
   if (!si.client_secret) throw unprocessable("Stripe did not return a confirmation to complete");
   return { setupIntentId: si.id, clientSecret: si.client_secret, paymentMethodId: pm.id };
+}
+
+/** Where Stripe may send the customer back to: a path on our own site, never another host. */
+const RETURN_PATH = /^\/(?!\/)[\w\-/.?=&%]*$/;
+
+/**
+ * Saves a card on Stripe's own hosted page (Checkout, setup mode) instead of a form inside the app, so the customer
+ * types their card on checkout.stripe.com. Nothing is charged. The SetupIntent Checkout creates carries the same
+ * metadata as startSetup("card"), so setup_intent.succeeded (and billing-sync, if that webhook is missed) adds the
+ * free credit exactly as before.
+ */
+export async function startCardCheckout(orgId: string, email: string, returnPath: string, cancelPath: string, idempotencyKey: string) {
+  if (!RETURN_PATH.test(returnPath) || !RETURN_PATH.test(cancelPath)) throw unprocessable("returnPath and cancelPath must be paths on this site");
+  const origin = (webOrigins[0] ?? "").replace(/\/$/, "");
+  if (!origin) throw unprocessable("WEB_ORIGIN is not set, so Stripe has nowhere to send the customer back to");
+  const payer = await customerOf(orgId);
+  const stripe = requireStripe();
+  const customerId = await ensureCustomer(payer, email);
+  const session = await stripe.checkout.sessions.create(
+    {
+      mode: "setup",
+      customer: customerId,
+      payment_method_types: ["card"],
+      setup_intent_data: { metadata: { organizationId: payer, kind: "onboarding_card" } },
+      success_url: `${origin}${returnPath}`,
+      cancel_url: `${origin}${cancelPath}`,
+      metadata: { organizationId: payer, kind: "onboarding_card" },
+    },
+    { idempotencyKey: `checkout-card:${payer}:${idempotencyKey}` },
+  );
+  if (!session.url) throw unprocessable("Stripe did not return a page to add the card on");
+  return { url: session.url };
 }
 
 /** True when this SetupIntent is the customer's own, succeeded, and consents to off-session charges. */

@@ -8,7 +8,7 @@ import { json, session } from "./fixtures";
 import { renderWithStore } from "./render";
 import { mockServer } from "./server";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/app/leads", useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), useSearchParams: () => new URLSearchParams() }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/app/leads", useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), useSearchParams: () => new URLSearchParams("tab=week") }));
 
 afterEach(() => vi.unstubAllGlobals());
 

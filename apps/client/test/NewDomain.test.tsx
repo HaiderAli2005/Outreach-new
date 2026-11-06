@@ -34,6 +34,15 @@ function server(sessions: Session[]) {
 }
 
 describe("A new domain while a campaign is running", () => {
+  it("signed in with no workspace, makes the workspace for the domain typed on the home page instead of asking again", async () => {
+    query = "domain=videofunker.ai";
+    const none: Session = { ...session, organizations: [], activeOrganizationId: null };
+    const { calls } = server([none, { ...both, organizations: [both.organizations[1]] }]);
+    const { queryByText } = renderWithStore(<Onboarding />);
+    await waitFor(() => expect(calls.find((c) => c.method === "POST" && c.path === "/organizations")?.body).toEqual({ domain: "videofunker.ai" }));
+    expect(queryByText("Which domain do you sell from?")).toBeNull();
+  });
+
   it("creates its own workspace and leaves the running one alone", async () => {
     query = "domain=videofunker.ai";
     const { calls } = server([rankhouse, both]);

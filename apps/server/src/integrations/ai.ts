@@ -59,8 +59,9 @@ export function requestParams(prompt: string, opts: AiOptions & { model: string 
 
 export class OpenAiClient implements AiClient {
   private readonly client: OpenAI;
-  constructor(apiKey: string, private readonly model: string) {
-    this.client = new OpenAI({ apiKey });
+  /** `baseURL` points at an OpenAI-compatible endpoint such as Azure's v1 API; Azure reads its key from "api-key". */
+  constructor(apiKey: string, private readonly model: string, baseURL?: string) {
+    this.client = baseURL ? new OpenAI({ apiKey, baseURL, defaultHeaders: { "api-key": apiKey } }) : new OpenAI({ apiKey });
   }
 
   /** Models this account turned out not to have, so they are not asked again until restart. */
@@ -137,13 +138,18 @@ let cached: AiClient | null | undefined;
 
 export function getAi(): AiClient | null {
   if (override !== undefined) return override;
-  if (cached === undefined) cached = env.OPENAI_API_KEY ? new OpenAiClient(env.OPENAI_API_KEY, env.OPENAI_MODEL) : null;
+  if (cached === undefined) {
+    // Azure, once its endpoint is set, is the only provider: its deployment names mean nothing to OpenAI.
+    const azure = env.AZURE_OPENAI_ENDPOINT?.replace(/\/+$/, "");
+    const key = azure ? env.AZURE_OPENAI_API_KEY : env.OPENAI_API_KEY;
+    cached = key ? new OpenAiClient(key, env.OPENAI_MODEL, azure) : null;
+  }
   return cached;
 }
 
 export function requireAi(): AiClient {
   const ai = getAi();
-  if (!ai) throw notConfigured("AI (OPENAI_API_KEY)");
+  if (!ai) throw notConfigured(env.AZURE_OPENAI_ENDPOINT ? "AI (AZURE_OPENAI_API_KEY)" : "AI (OPENAI_API_KEY)");
   return ai;
 }
 

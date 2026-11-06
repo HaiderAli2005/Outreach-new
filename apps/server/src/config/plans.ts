@@ -28,7 +28,23 @@ export function domainsNeeded(emailsPerDay: number): number {
 /** Emails in every sequence: the first email and three follow-ups. A daily email volume reaches volume / 4 new people. */
 export const SEQUENCE_STEPS = 4;
 
-/** New people a day that a daily email volume can carry once every step of the sequence is going out. */
+/**
+ * How a day's emails are split (see dailyPlan.ts): follow-ups first, new people fill everything they leave. New people
+ * always get at least NEW_SHARE_MIN of the day, so a Monday stacked with weekend follow-ups never stops new people.
+ * There is no cap below the day itself: a customer who chose 1,250 a day sends 1,250 from the first full day, and
+ * the follow-ups that start on day 3 take their place first from then on, inside the same total.
+ */
+export const NEW_SHARE_MIN = 0.2;
+export const NEW_SHARE_MAX = 1;
+
+/** The fewest and the most new people a day a daily email volume allows. */
+export function newPeopleBounds(emailsPerDay: number): { min: number; max: number } {
+  if (!emailsPerDay || emailsPerDay <= 0) return { min: 0, max: 0 };
+  const min = Math.max(1, Math.ceil(emailsPerDay * NEW_SHARE_MIN));
+  return { min, max: Math.max(min, Math.floor(emailsPerDay * NEW_SHARE_MAX)) };
+}
+
+/** New people a day that a daily email volume carries on average once every step of the sequence is going out. */
 export function newPeoplePerDay(emailsPerDay: number): number {
   if (!emailsPerDay || emailsPerDay <= 0) return 0;
   return Math.max(1, Math.floor(emailsPerDay / SEQUENCE_STEPS));
@@ -54,8 +70,11 @@ export const BUDGET_PRESETS_DECICENTS = [10_000n, 20_000n, 40_000n, 100_000n, 20
 export { TOPUP_DAYS } from "../domain/money.js";
 
 // ─── Warmup (shared pool) ───────────────────────────────────────────────────
-/** A new domain ages with DNS set and sends nothing for this long. */
-export const AGING_DAYS = 30;
+/**
+ * A new domain ages with DNS set and sends nothing for this long. The "brand-new domain" penalty fades within the first
+ * couple of weeks, and reputation itself is built by the warmup ladder, not by silence, so 14 days is enough.
+ */
+export const AGING_DAYS = 14;
 /** The warmup ramp: [first warmup day, daily cap]. Day 28 and beyond is full capacity. */
 export const WARMUP_RAMP: readonly [number, number][] = [
   [1, 5],
@@ -72,10 +91,11 @@ export const WARMUP_DAYS_TO_ACTIVE = 29;
  */
 export const SEQUENCE_DAYS = [0, 3, 7, 14] as const;
 /**
- * Purchase to full capacity, in weeks: DNS, 30 days aging, 29 days on the warmup ladder. Every shelf and reorder
- * calculation uses this as the lead time.
+ * Purchase to full capacity, in weeks: DNS, the aging days, then 29 days on the warmup ladder (14 + 29 = 43 days, so 7
+ * weeks). Every shelf and reorder calculation uses it as the lead time, and it is worked out from the two so changing
+ * either keeps them right.
  */
-export const LEAD_TIME_WEEKS = 9;
+export const LEAD_TIME_WEEKS = Math.ceil((AGING_DAYS + WARMUP_DAYS_TO_ACTIVE) / 7);
 
 // ─── Parked branded-domain flow (dedicated domains per customer) ────────────
 export const CAMPAIGN_START = { lo: 10, hi: 15, rampDays: 14 } as const;

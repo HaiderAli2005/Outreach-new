@@ -8,6 +8,7 @@ import type { AnalysisSummary, BuyerGroup, Fact, MarketView, OnboardingState } f
 import { compact, n0 } from "@/lib/format";
 import { Counter } from "./live/motion";
 import { audienceIcon } from "./live/cards";
+import { StepCta } from "./StepCta";
 
 const COUNTRIES = ["United Kingdom", "United States", "Ireland", "Germany", "Netherlands", "France", "United Arab Emirates", "Canada", "Australia"];
 
@@ -786,6 +787,7 @@ export function AnalysisStep({ state, market, setNextDisabled }: { state: Onboar
           )}
         </h1>
         <p className="an-p">Check the facts, then keep the buyer groups you want to reach. {fromAnswers ? "Built from your answers." : "Every fact shows the page it came from."}</p>
+        <StepCta />
       </header>
       {updateState.error ? (
         <div className="banner bad" role="alert" style={{ marginTop: 16 }}>

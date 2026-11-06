@@ -49,10 +49,9 @@ describe("DomainSearch", () => {
     expect(onDomain).toHaveBeenLastCalledWith("northwind.io");
   });
 
-  it("offers a sample domain on the hero", async () => {
+  it("shows the free credit on the hero", () => {
     renderWithStore(<DomainSearch id="heroDomain" hero />);
-    await userEvent.click(screen.getByRole("button", { name: /try it with northwind.io/i }));
-    expect(push).toHaveBeenLastCalledWith("/onboarding?domain=northwind.io");
+    expect(screen.getByText("$10 free in credits")).toBeInTheDocument();
   });
 
   it("suggests companies while typing and opens the one picked", async () => {
@@ -100,14 +99,15 @@ describe("DomainSearch", () => {
   });
 
   it("offers the typed domain first when it is a real domain", async () => {
-    vi.stubGlobal("fetch", sources({ cb: [{ name: "Northwind", domain: "northwind.us" }] }));
+    // Not "northwind": an earlier test types it, and a slow run can remember its empty answer.
+    vi.stubGlobal("fetch", sources({ cb: [{ name: "Fernwood", domain: "fernwood.us" }] }));
     renderWithStore(<DomainSearch id="heroDomain" />);
-    await userEvent.type(screen.getByLabelText(/your company domain/i), "northwind.io");
+    await userEvent.type(screen.getByLabelText(/your company domain/i), "fernwood.io");
     // The typed domain shows at once; the companies join it when the answer arrives.
-    await screen.findByRole("option", { name: /northwind\.us/ });
+    await screen.findByRole("option", { name: /fernwood\.us/ });
     const options = screen.getAllByRole("option");
-    expect(options[0]).toHaveTextContent("Use northwind.io");
-    expect(options[1]).toHaveTextContent("northwind.us");
+    expect(options[0]).toHaveTextContent("Use fernwood.io");
+    expect(options[1]).toHaveTextContent("fernwood.us");
   });
 
   it("stops a domain that doesn't exist at the moment it is entered", async () => {

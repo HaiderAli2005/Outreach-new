@@ -21,14 +21,14 @@ const touches = [
 ];
 
 describe("Setup", () => {
-  it("groups the sidebar into Outreach, Setup and Workspace, with no Campaigns item", async () => {
+  it("groups the sidebar into Outreach, Setup and Workspace, with Campaigns under Outreach and Settings in the account menu", async () => {
     mockServer({ "GET /dashboard/nav-counts": () => json({ data: null }) });
     const { store } = renderWithStore(<AppShell>page</AppShell>);
     store.dispatch(sessionReceived(session));
     const labels = (await screen.findAllByRole("link")).map((a) => a.textContent?.trim());
-    for (const l of ["Cockpit", "Inbox", "Leads", "Business profile", "Targeting", "Email sequence", "Sending schedule", "Suppress list", "Credits", "Settings", "System"]) expect(labels).toContain(l);
-    expect(labels).not.toContain("Campaigns");
-    expect(labels).not.toContain("Integrations");
+    for (const l of ["Cockpit", "Inbox", "Leads", "Campaigns", "Business profile", "Targeting", "Email sequence", "Sending schedule", "Suppress list", "Credits", "System"]) expect(labels).toContain(l);
+    // Settings lives in the account menu at the foot of the sidebar, not in the nav.
+    for (const l of ["Integrations", "Settings"]) expect(labels).not.toContain(l);
     expect(screen.getByText("Setup")).toBeInTheDocument();
   });
 

@@ -1,0 +1,298 @@
+/*
+ * Light theme for onboarding (#onboard). The onboarding stylesheets hard-code dark-theme colours (light text,
+ * near-black surfaces, pale gold). Each such rule is repeated here with the same selector and screen size and its
+ * colours mapped to the light palette: light text to the ink scale, dark surfaces to paper, pale gold to deep gold.
+ * If you add a fixed colour to an onboarding rule, add its light version here. Hand-tuned panels are at the end.
+ */
+html[data-theme="light"] #onboard .pill-btn[aria-pressed="true"]{box-shadow:inset 0 0 0 1px rgba(148,103,31,0.6)}
+html[data-theme="light"] #onboard .ob-foot{--glass-fill:linear-gradient(180deg, rgba(251,250,247,0.92), rgba(251,250,247,0.94))}
+@media (max-width: 860px){html[data-theme="light"] #onboard .rail.open{--glass-fill:linear-gradient(180deg, rgba(251,250,247,0.98), rgba(251,250,247,0.99))}}
+@media (max-width: 860px){html[data-theme="light"] #onboard .rail-mob{--glass-fill:linear-gradient(180deg, rgba(251,250,247,0.92), rgba(251,250,247,0.94))}}
+html[data-theme="light"] #onboard.is-auth{background:radial-gradient(900px 420px at 50% -160px,rgba(214,176,124,.12),transparent 70%),var(--bg)}
+html[data-theme="light"] #onboard .ob-kicker{color:var(--ink-3)}
+html[data-theme="light"] #onboard .ob-kicker b{color:#94671f}
+html[data-theme="light"] #onboard .ob-kicker .of{background:rgba(60,44,20,.22)}
+html[data-theme="light"] #onboard .an-h{color:var(--ink)}
+html[data-theme="light"] #onboard .an-h .grad{background:linear-gradient(180deg,#b0812f 0%,#7a5418 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+html[data-theme="light"] #onboard .an-p{color:var(--ink-2)}
+html[data-theme="light"] #onboard .an-p b{color:var(--ink)}
+html[data-theme="light"] #onboard .an-sheet{background:var(--surface)}
+html[data-theme="light"] #onboard .an-lab h3{color:var(--ink)}
+html[data-theme="light"] #onboard .an-lab p{color:var(--ink-3)}
+html[data-theme="light"] #onboard .an-ta{background:var(--bg);color:var(--ink)}
+html[data-theme="light"] #onboard .an-ta:focus{box-shadow:inset 0 0 0 1px rgba(148,103,31,0.6),0 0 0 4px rgba(148,103,31,0.156)}
+html[data-theme="light"] #onboard .an-opt{color:var(--ink-2)}
+html[data-theme="light"] #onboard .an-opt:hover{color:var(--ink)}
+html[data-theme="light"] #onboard .an-opt[aria-pressed="true"]{color:var(--ink);box-shadow:inset 0 0 0 1px rgba(148,103,31,0.6)}
+html[data-theme="light"] #onboard .an-sum{background:var(--surface)}
+html[data-theme="light"] #onboard .an-sum h5{color:var(--ink-2)}
+html[data-theme="light"] #onboard .an-big{color:var(--ink)}
+html[data-theme="light"] #onboard .an-bs{color:var(--ink-3)}
+html[data-theme="light"] #onboard .an-qt{color:var(--ink-2)}
+html[data-theme="light"] #onboard .an-qt b{color:#94671f}
+html[data-theme="light"] #onboard .an-list li{color:var(--ink-2)}
+html[data-theme="light"] #onboard .an-list b{color:var(--ink)}
+html[data-theme="light"] #onboard .an-note{color:var(--ink-3)}
+@media (max-width:1240px){html[data-theme="light"] #onboard .an-inline{color:var(--ink-2)}}
+@media (max-width:1240px){html[data-theme="light"] #onboard .an-inline b{color:var(--ink)}}
+html[data-theme="light"] #onboard .notice.glass{box-shadow:inset 0 0 0 1px rgba(148,103,31,0.286)!important}
+html[data-theme="light"] #onboard .ob-h .grad,
+html[data-theme="light"] #onboard .an-h .grad,
+html[data-theme="light"] #onboard .au-sh b,
+html[data-theme="light"] #onboard .au-h .grad{background:linear-gradient(180deg,#b0812f 0%,#7a5418 100%)!important;-webkit-background-clip:text!important;background-clip:text!important;color:transparent!important}
+html[data-theme="light"] #onboard .c-big,
+html[data-theme="light"] #onboard .an-big{background:linear-gradient(180deg,#b0812f 0%,#7a5418 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+html[data-theme="light"] #onboard .an-big{color:var(--ink)!important}
+html[data-theme="light"] #onboard .an-in:focus{box-shadow:inset 0 0 0 1px var(--gold-line),0 0 0 4px rgba(148,103,31,0.13)}
+html[data-theme="light"] #onboard .ob-foot .spinner{border-color:rgba(251,250,247,0.86);border-top-color:var(--bg)}
+html[data-theme="light"] #onboard .nm-num{color:var(--ink);box-shadow:inset 0 0 0 2px #D4AE72,0 0 0 10px rgba(148,103,31,0.091)}
+html[data-theme="light"] #onboard .nm-wait{color:var(--ink-2)}
+html[data-theme="light"] #onboard .nm-wait .au-spin{border-color:rgba(148,103,31,0.325)}
+html[data-theme="light"] #onboard .bg-more summary{color:#94671f}
+html[data-theme="light"] #onboard .kw-in::placeholder{color:#94671f}
+html[data-theme="light"] #onboard .kw-in:focus{box-shadow:inset 0 0 0 1px rgba(148,103,31,0.6)}
+html[data-theme="light"] #onboard .kw-sug button:hover:not(:disabled),
+html[data-theme="light"] #onboard .kw-sug button:focus-visible{box-shadow:inset 0 0 0 1px rgba(148,103,31,0.6)}
+html[data-theme="light"] #onboard .kw-warn{color:#94671f}
+html[data-theme="light"] #onboard .kw-msg{color:var(--bad)}
+html[data-theme="light"] #onboard .au-ok{color:var(--good);box-shadow:inset 0 0 0 1px rgba(148,103,31,0.364)}
+html[data-theme="light"] #onboard .au-alt{color:var(--ink)}
+html[data-theme="light"] #onboard .au-alt:hover{color:var(--ink)}
+html[data-theme="light"] #onboard .au-shell{background:var(--surface)!important;box-shadow:0 0 0 1px rgb(var(--hw) / .075),inset 0 1px 0 rgb(var(--hw) / .05),0 1px 2px rgb(0 0 0 / calc(.3 * var(--shk))),0 8px 16px -6px rgb(0 0 0 / calc(.35 * var(--shk))),0 24px 48px -16px rgb(0 0 0 / calc(.45 * var(--shk))),0 0 64px rgba(148,103,31,0.046)!important}
+html[data-theme="light"] #onboard .au-h{color:var(--ink)}
+html[data-theme="light"] #onboard .au-p{color:var(--ink-3)}
+html[data-theme="light"] #onboard .au-sso,
+html[data-theme="light"] #onboard .au-ctl .au-input,
+html[data-theme="light"] #onboard .au-who{background:var(--surface)}
+html[data-theme="light"] #onboard .au-sso{color:var(--ink)}
+html[data-theme="light"] #onboard .au-sso:hover:not(:disabled){background:var(--surface)}
+html[data-theme="light"] #onboard .au-sso:focus-visible{box-shadow:inset 0 0 0 1px rgba(148,103,31,0.6),0 0 0 3px rgba(148,103,31,0.182)}
+html[data-theme="light"] #onboard .au-ctl .au-input{color:var(--ink)}
+html[data-theme="light"] #onboard .au-ctl .au-input::placeholder{color:var(--ink-4)}
+html[data-theme="light"] #onboard .au-ctl .au-input:focus{background:var(--surface);box-shadow:inset 0 0 0 1px rgba(148,103,31,0.6),0 0 0 3px rgba(148,103,31,0.182)}
+html[data-theme="light"] #onboard .au-ctl .au-input.bad{box-shadow:inset 0 0 0 1px rgba(148,103,31,0.6),0 0 0 3px rgba(148,103,31,0.156)}
+html[data-theme="light"] #onboard .au-lead{color:var(--ink-4)}
+html[data-theme="light"] #onboard .au-field label{color:var(--ink-2)}
+html[data-theme="light"] #onboard .au-or{color:var(--ink-4)}
+html[data-theme="light"] #onboard .au-who{color:var(--ink)}
+html[data-theme="light"] #onboard .au-switch{color:var(--ink-3)}
+html[data-theme="light"] #onboard .au-legal{color:var(--ink-4)}
+html[data-theme="light"] #onboard .au-shell.lg{background:linear-gradient(180deg,rgb(var(--hw) / .08),rgb(var(--hw) / 0) 26px),rgba(60,44,20,0.045)!important}
+html[data-theme="light"] #onboard .au-shell.lg .au-sso,
+html[data-theme="light"] #onboard .au-shell.lg .au-ctl .au-input,
+html[data-theme="light"] #onboard .au-shell.lg .au-ctl .au-input:focus,
+html[data-theme="light"] #onboard .au-shell.lg .au-who{background:rgba(251,250,247,0.86)}
+html[data-theme="light"] #onboard .au-shell.lg .au-sso:hover:not(:disabled){background:rgba(251,250,247,0.86)}
+html[data-theme="light"] #onboard.lv-app{background:var(--bg,var(--bg))}
+html[data-theme="light"] #onboard .lv-log{background:var(--bg)}
+html[data-theme="light"] #onboard .lv-log-h .dot{box-shadow:0 0 0 3px rgba(148,103,31,0.234)}
+html[data-theme="light"] #onboard .lv-log-h.warn .dot{box-shadow:0 0 0 3px rgba(148,103,31,0.234)}
+html[data-theme="light"] #onboard .pill button:focus-visible{outline:2px solid rgba(148,103,31,0.6)}
+html[data-theme="light"] #onboard .pill.done .pill-n{box-shadow:inset 0 0 0 1px rgba(148,103,31,0.455)}
+html[data-theme="light"] #onboard .pill.cur button{box-shadow:inset 0 0 0 1px rgba(148,103,31,0.52)}
+html[data-theme="light"] #onboard .lv-ghost{background:var(--bg,var(--bg))}
+html[data-theme="light"] #onboard .mk-tabbar button:focus-visible{outline:2px solid rgba(148,103,31,0.6)}
+html[data-theme="light"] #onboard .lv-mbar{background:rgba(251,250,247,0.94)}
+@media (max-width:1279px){html[data-theme="light"] #onboard .lv-col3{background:var(--bg,var(--bg))}}
+@media (max-width:899px){html[data-theme="light"] #onboard .lv-rail{background:rgba(251,250,247,0.94)}}
+html[data-theme="light"] #onboard .mk-bar i{background:rgba(60,44,20,0.495)}
+html[data-theme="light"] #onboard .lv-toast{background:var(--surface)}
+html[data-theme="light"] #onboard .lv-guess{box-shadow:inset 0 0 0 1px rgba(148,103,31,0.286)}
+html[data-theme="light"] #onboard .rc:hover{background:var(--surface)}
+html[data-theme="light"] body #onboard.lv-app :is(.rc,.lv-log,.rt,.ph-card,.aud-card,.pv-card,.lv-sec,.lead,.an-sheet,.an-sum,.glass):not(.nav-in,.notice){--og-fill:rgba(60,44,20,0.036)}
+html[data-theme="light"] body #onboard.lv-app .rc:hover,
+html[data-theme="light"] body #onboard.lv-app .rc.cur{--og-fill:rgba(60,44,20,0.05)}
+html[data-theme="light"] body #onboard.lv-app .rc.cur{box-shadow:inset 0 1px 0 rgb(var(--hw) / .3),inset 0 -1px 0 rgb(var(--hw) / .06),inset 1px 0 0 rgb(var(--hw) / .09),inset -1px 0 0 rgb(var(--hw) / .06),inset 0 0 0 1px rgb(var(--hw) / .05),inset 0 0 0 1px rgba(148,103,31,0.39),0 18px 40px -22px rgb(0 0 0 / calc(.6 * var(--shk)))!important}
+html[data-theme="light"] body #onboard.lv-app .lv-log{--og-fill:rgba(251,250,247,0.86)}
+html[data-theme="light"] #onboard.lv-app:not(.is-auth){background:radial-gradient(900px 420px at 62% -120px,rgba(231,201,159,.10),transparent 70%),radial-gradient(700px 520px at 6% 30%,rgba(207,164,103,.06),transparent 70%),var(--bg,var(--bg))!important}
+html[data-theme="light"] #onboard .sco{background:linear-gradient(180deg,rgba(60,44,20,0.041),rgba(60,44,20,0.013));box-shadow:inset 0 0 0 1px rgba(60,44,20,0.081),inset 0 1px 0 rgba(60,44,20,0.045),0 24px 60px -30px rgba(251,250,247,0.86)}
+html[data-theme="light"] #onboard .sco-lock{box-shadow:inset 0 0 0 1px rgba(148,103,31,0.39)}
+html[data-theme="light"] #onboard .sco-steps{background:rgba(251,250,247,0.86);box-shadow:inset 0 0 0 1px rgba(60,44,20,0.063)}
+html[data-theme="light"] #onboard .sco-steps li + li{box-shadow:inset 1px 0 0 rgba(60,44,20,0.063)}
+html[data-theme="light"] #onboard .sco-steps i{background:rgba(60,44,20,0.063);box-shadow:inset 0 0 0 1px rgba(60,44,20,0.108)}
+html[data-theme="light"] #onboard .sco-note{background:rgba(60,44,20,0.036);box-shadow:inset 0 0 0 1px rgba(60,44,20,0.081)}
+html[data-theme="light"] #onboard .sco-note.bad{color:var(--bad);box-shadow:inset 0 0 0 1px rgba(148,103,31,0.39)}
+html[data-theme="light"] #onboard .sco-foot{border-top:1px solid rgba(60,44,20,0.063)}
+html[data-theme="light"] #onboard .sco-stripe b{color:#5b54d6}
+@media (max-width:760px){html[data-theme="light"] #onboard .sco-steps li + li{box-shadow:inset 0 1px 0 rgba(60,44,20,0.063)}}
+
+/* ==========================================================================================================
+ * Paper and gold: onboarding uses the same light design as the app (theme-light-pro.css), so moving from setup
+ * into the app looks like one product. The dark "liquid glass" cards above are tinted films with light inner
+ * edges; on cream --hw is dark, so those edges turned into heavy brown outlines on a grey film. In light mode
+ * every card is white paper instead: a crisp 1px edge and a soft shadow, gold kept for what is current or next.
+ * ========================================================================================================== */
+
+/* 1. the app's light tokens, so every onboarding colour matches the app exactly */
+html[data-theme="light"] #onboard {
+  --bg: #ebe6dc;
+  --surface: #fdfcf9;
+  --surface-2: #f5f1ea;
+  --field: #ffffff;
+  --hair: #e1d9cc;
+  --hair-2: #cfc6b6;
+  --ink: #12110f;
+  --ink-2: #45413a;
+  --ink-3: #6b655b;
+  --ink-4: #948d81;
+  --gold: #a06f1c;
+  --gold-soft: rgb(176 125 34 / 0.1);
+  --gold-line: rgb(176 125 34 / 0.5);
+  --grad: linear-gradient(180deg, #f3c871 0%, #dc9d38 100%);
+  --on-gold: #1a1206;
+  --good: #23824f;
+  --warn: #a5690c;
+  --bad: #c2441b;
+  --paper: 0 1px 2px rgb(60 42 14 / 0.06), 0 10px 26px -16px rgb(60 42 14 / 0.2);
+}
+
+/* 2. canvas and top bar: the app's warm wash from the top and its translucent cream bar */
+html[data-theme="light"] #onboard.lv-app:not(.is-auth),
+html[data-theme="light"] #onboard:not(.is-auth) {
+  background: radial-gradient(1100px 420px at 50% -260px, rgb(220 157 56 / 0.12), transparent 70%), var(--bg) !important;
+}
+html[data-theme="light"] #onboard .vb {
+  background: rgb(235 230 220 / 0.85) !important;
+  border-bottom-color: var(--hair);
+}
+
+/* 3. every card is white paper (replaces the glass film and its dark edges) */
+html[data-theme="light"] body #onboard.lv-app :is(.rc, .rt, .ph-card, .aud-card, .pv-card, .lv-sec, .lead, .an-sheet, .an-sum, .glass):not(.nav-in, .notice) {
+  --og-fill: var(--surface);
+  background: var(--surface) !important;
+  box-shadow: inset 0 0 0 1px var(--hair), var(--paper) !important;
+}
+html[data-theme="light"] #onboard :is(.an-sheet, .sco, .pv-card, .aud-card) {
+  background: var(--surface) !important;
+  box-shadow: inset 0 0 0 1px var(--hair), 0 1px 2px rgb(60 42 14 / 0.05), 0 22px 44px -28px rgb(60 42 14 / 0.26) !important;
+}
+html[data-theme="light"] #onboard :is(.an-sheet, .sco, .pv-card, .ph-card, .glass)::before,
+html[data-theme="light"] #onboard :is(.an-sheet, .sco, .pv-card, .ph-card, .glass)::after {
+  display: none !important;
+}
+
+/* 4. the rail: a quiet checklist. Done steps are flat paper, the step you are on carries the gold ring. */
+html[data-theme="light"] body #onboard.lv-app .rc {
+  box-shadow: inset 0 0 0 1px var(--hair), 0 1px 2px rgb(60 42 14 / 0.05) !important;
+}
+html[data-theme="light"] body #onboard.lv-app .rc:hover {
+  background: #ffffff !important;
+  box-shadow: inset 0 0 0 1px var(--hair-2), 0 1px 2px rgb(60 42 14 / 0.07), 0 8px 18px -12px rgb(60 42 14 / 0.22) !important;
+}
+html[data-theme="light"] body #onboard.lv-app .rc.cur {
+  background: linear-gradient(180deg, rgb(220 157 56 / 0.08), rgb(220 157 56 / 0.02)), var(--surface) !important;
+  box-shadow: inset 0 0 0 1px var(--gold-line), 0 6px 16px -10px rgb(176 125 34 / 0.45) !important;
+}
+html[data-theme="light"] #onboard .rc-ic {
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--hair);
+  color: var(--ink-2);
+}
+html[data-theme="light"] #onboard .rc.cur .rc-ic {
+  background: var(--gold-soft);
+  box-shadow: inset 0 0 0 1px rgb(176 125 34 / 0.3);
+  color: var(--gold);
+}
+html[data-theme="light"] #onboard :is(.rc-gh-n, .rc-gh-t) {
+  font: 600 10.5px var(--font-geist-sans), sans-serif;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+html[data-theme="light"] #onboard .rc-gh-live {
+  background: var(--gold);
+  box-shadow: 0 0 0 3px rgb(176 125 34 / 0.16);
+}
+html[data-theme="light"] #onboard .rc-chips span {
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+html[data-theme="light"] body #onboard.lv-app .lv-log {
+  --og-fill: var(--surface-2);
+  background: var(--surface-2) !important;
+  box-shadow: inset 0 0 0 1px var(--hair) !important;
+}
+
+/* 5. step pills: green for done, solid gold for the step you are on, like the app's status colours */
+html[data-theme="light"] #onboard .pill-line { background: var(--hair-2); }
+html[data-theme="light"] #onboard :is(.pill.done, .pill.cur) .pill-line { background: rgb(35 130 79 / 0.45); }
+html[data-theme="light"] #onboard .pill-n { color: var(--ink-3); background: var(--surface); box-shadow: inset 0 0 0 1px var(--hair-2); }
+html[data-theme="light"] #onboard .pill.done .pill-n { color: var(--good); background: rgb(35 130 79 / 0.08); box-shadow: inset 0 0 0 1px rgb(35 130 79 / 0.32); }
+html[data-theme="light"] #onboard .pill.cur button { color: var(--ink); background: var(--surface); box-shadow: inset 0 0 0 1px var(--gold-line), 0 1px 2px rgb(60 42 14 / 0.06); }
+html[data-theme="light"] #onboard .pill.cur .pill-n { color: var(--on-gold); background: var(--grad); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.5); }
+html[data-theme="light"] #onboard .pills-back { background: #ffffff; box-shadow: inset 0 0 0 1px var(--hair-2), 0 1px 2px rgb(60 42 14 / 0.06); color: var(--ink-2); }
+html[data-theme="light"] #onboard .pills-back:hover:not(:disabled) { background: #faf7f1; color: var(--ink); }
+
+/* 6. the "Free overview" chip: a paper pill with a gold shield, not a grey film */
+html[data-theme="light"] #onboard .pv-head .nosend {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--hair), 0 1px 2px rgb(60 42 14 / 0.06);
+}
+html[data-theme="light"] #onboard .pv-head .nosend .nosend-ic {
+  background: var(--gold-soft);
+  box-shadow: inset 0 0 0 1px rgb(176 125 34 / 0.3);
+  color: var(--gold);
+}
+html[data-theme="light"] #onboard .pv-head .nosend i { background: var(--hair-2); }
+
+/* 7. buttons and fields: the app's solid gold primary and crisp white secondary */
+html[data-theme="light"] #onboard .btn-primary {
+  background: var(--grad) !important;
+  color: var(--on-gold) !important;
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.55), 0 0 0 1px rgb(176 125 34 / 0.55), 0 6px 16px -8px rgb(176 125 34 / 0.6) !important;
+}
+html[data-theme="light"] #onboard .btn-primary:hover:not(:disabled) {
+  filter: brightness(1.04) saturate(1.05);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.6), 0 0 0 1px rgb(176 125 34 / 0.7), 0 10px 24px -10px rgb(176 125 34 / 0.7) !important;
+}
+html[data-theme="light"] #onboard .btn:not(.btn-primary):not(.btn-text):not(.btn-danger) {
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px var(--hair-2), 0 1px 2px rgb(60 42 14 / 0.06);
+  color: var(--ink);
+}
+html[data-theme="light"] #onboard .btn:not(.btn-primary):not(.btn-text):not(.btn-danger):hover:not(:disabled) {
+  background: #faf7f1;
+  box-shadow: inset 0 0 0 1px #bdb3a2, 0 2px 6px rgb(60 42 14 / 0.08);
+}
+html[data-theme="light"] #onboard .input {
+  background: var(--field) !important;
+  box-shadow: inset 0 0 0 1px var(--hair-2) !important;
+}
+html[data-theme="light"] #onboard .input:focus {
+  box-shadow: inset 0 0 0 1px var(--gold-line), 0 0 0 4px rgb(220 157 56 / 0.16) !important;
+}
+
+/* 8. sign-up and domain screens: the same white floating bar as the website, and a paper card */
+html[data-theme="light"] #onboard .obh .nav-in.glass.lg {
+  --glass-fill: rgba(255, 255, 255, 0.66);
+  box-shadow: inset 0 0 0 1px rgba(60, 44, 20, 0.09), inset 0 1px 0 #fff, 0 10px 30px -14px rgba(60, 44, 20, 0.3) !important;
+}
+html[data-theme="light"] #onboard .obh .nav-in.glass.lg::before,
+html[data-theme="light"] #onboard .obh .nav-in.glass.lg::after {
+  background: none !important;
+}
+html[data-theme="light"] #onboard .obh-exit { color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--hair-2); }
+html[data-theme="light"] #onboard .obh-exit:hover { color: var(--ink); background: #ffffff; }
+html[data-theme="light"] #onboard :is(.au-shell, .au-shell.lg) {
+  background: var(--surface) !important;
+  box-shadow: inset 0 0 0 1px var(--hair), 0 1px 2px rgb(60 42 14 / 0.05), 0 28px 56px -30px rgb(60 42 14 / 0.32) !important;
+}
+html[data-theme="light"] #onboard :is(.au-shell, .au-shell.lg)::before,
+html[data-theme="light"] #onboard :is(.au-shell, .au-shell.lg)::after {
+  display: none !important;
+}
+html[data-theme="light"] #onboard :is(.au-shell, .au-shell.lg) :is(.au-sso, .au-ctl .au-input, .au-who) {
+  background: var(--field) !important;
+  box-shadow: inset 0 0 0 1px var(--hair-2), 0 1px 2px rgb(60 42 14 / 0.05);
+}
+html[data-theme="light"] #onboard :is(.au-shell, .au-shell.lg) .au-sso:hover:not(:disabled) { background: #faf7f1 !important; }
+html[data-theme="light"] #onboard :is(.au-shell, .au-shell.lg) .au-ctl .au-input:focus {
+  box-shadow: inset 0 0 0 1px var(--gold-line), 0 0 0 4px rgb(220 157 56 / 0.16) !important;
+}
+html[data-theme="light"] #onboard .au-switch a,
+html[data-theme="light"] #onboard .au-switch button { color: var(--gold); }
+@media (max-width: 899px) {
+  html[data-theme="light"] #onboard .lv-rail { background: rgb(235 230 220 / 0.9) !important; border-bottom-color: var(--hair); }
+  html[data-theme="light"] #onboard .lv-mbar { background: rgb(253 252 249 / 0.94) !important; border-top: 1px solid var(--hair); }
+}

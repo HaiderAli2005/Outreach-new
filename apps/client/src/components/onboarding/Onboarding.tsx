@@ -24,7 +24,7 @@ import {
   useSkipCardMutation,
 } from "@/store/api";
 import type { OnboardingState } from "@/lib/types";
-import { normDomain, validDomain } from "@/lib/format";
+import { budgetOf, normDomain, validDomain } from "@/lib/format";
 import { AuthCard } from "./AuthStep";
 import { AuthHeader } from "@/components/auth/AuthHeader";
 import { AnalysisStep } from "./AnalysisStep";
@@ -40,6 +40,8 @@ import { SETUP_STEPS } from "./live/steps";
 import { LaunchStep } from "./LaunchStep";
 import type { PayHandle } from "./Payment";
 import { AuthShell } from "@/components/auth/AuthShell";
+import { StepCtaContext } from "./StepCta";
+import { ThemeToggle } from "@/components/shell/ThemeToggle";
 
 const STEPS: [string, IconId][] = SETUP_STEPS.map((x) => [x.label, x.icon]);
 const LIVE_KEYS = ["business", "buyers", "market", "sequence"];
@@ -61,7 +63,7 @@ function draftFrom(s: OnboardingState): Draft {
 }
 
 
-function ValueBar({ cta, onExit, exitLabel, compact }: { cta: React.ReactNode; onExit: () => void; exitLabel: string; compact: boolean }) {
+function ValueBar() {
   return (
     <header className="vb">
       <div className="vb-in">
@@ -69,31 +71,8 @@ function ValueBar({ cta, onExit, exitLabel, compact }: { cta: React.ReactNode; o
           <Mark />
           <span>Aperture</span>
         </Link>
-        {!compact ? (
-          <div className="vb-val">
-            <b>Your first outbound campaign, set up while you watch</b>
-            <ul className="vb-proofs">
-              <li>
-                <Icon id="check" />
-                Nothing sends until you launch
-              </li>
-              <li>
-                <Icon id="check" />
-                Your main domain never sends cold email
-              </li>
-              <li>
-                <Icon id="check" />
-                Every fact shows where it came from
-              </li>
-            </ul>
-          </div>
-        ) : (
-          <span className="spacer" />
-        )}
-        <button type="button" className="obh-exit" onClick={onExit}>
-          <span>{exitLabel}</span>
-        </button>
-        {cta ? <div className="vb-cta">{cta}</div> : null}
+        <span className="spacer" />
+        <ThemeToggle />
       </div>
     </header>
   );
@@ -223,11 +202,22 @@ function OnboardingFlow() {
   const [busy, setBusy] = useState(false);
   const [nextDisabled, setNextDisabled] = useState(false);
   const [awaiting, setAwaiting] = useState(params.get("card") === "1");
+  // Back from Stripe's card page without saving a card: land on the card step again, not the step before it.
+  const cardCancelled = params.get("card") === "cancelled";
   const [startErr, setStartErr] = useState("");
   const payRef = useRef<PayHandle | null>(null);
   const [payReady, setPayReady] = useState(false);
   const viewRef = useRef<HTMLDivElement>(null);
   const startedFor = useRef("");
+  // Signed in with no workspace yet, and a domain already typed on the home page: make its workspace straight away
+  // rather than asking for the same domain again. The effect below then starts its analysis. Tried once per domain;
+  // if it fails, the domain form shows with the error.
+  const createdFor = useRef("");
+  useEffect(() => {
+    if (!authed || hasOrg || !paramDomain || createdFor.current === paramDomain) return;
+    createdFor.current = paramDomain;
+    workspace.run(paramDomain).catch((e) => setStartErr(errorMessage(e)));
+  }, [authed, hasOrg, paramDomain, workspace]);
   const [presenting, setPresenting] = useState(false);
   const [staleRun, setStaleRun] = useState<string | null>(null);
   const [view, setView] = useState<AnalysisView>("review");
@@ -239,7 +229,7 @@ function OnboardingFlow() {
   const groupsKey = o ? o.groups.filter((g) => g.on).map((g) => `${g.id}:${g.keywords.join("|")}`).join(",") : "";
   const wantMarket = !!o?.analyzedAt && !!groupsKey && !presenting;
   const { data: market, isFetching: marketLoading } = useOnboardingMarketQuery(groupsKey, { skip: !wantMarket });
-  const { data: credits, refetch: refetchCredits } = useCreditsQuery(undefined, { skip: !authed || !hasOrg || (step ?? 0) < 4, pollingInterval: awaiting ? 2500 : 0 });
+  const { data: credits } = useCreditsQuery(undefined, { skip: !authed || !hasOrg || (step ?? 0) < 4, pollingInterval: awaiting ? 2500 : 0 });
 
   const liveRun = state?.analysisRun ?? null;
   const runPath = presenting && liveRun && liveRun.id !== staleRun ? `/analyses/${liveRun.id}/stream` : null;
@@ -356,11 +346,11 @@ function OnboardingFlow() {
     if (!state?.onboarding) return;
     setDraft((d) => d ?? draftFrom(state));
     if (step === null) {
-      const s = awaiting ? 4 : initialStep(state);
+      const s = awaiting || (cardCancelled && !state.funded) ? 4 : initialStep(state);
       setStep(s);
       setMax(s);
     }
-  }, [state, step, user?.name, awaiting]);
+  }, [state, step, user?.name, awaiting, cardCancelled]);
 
   // Nothing saved yet: start from the recommendation, which the server keeps below the maximum.
   useEffect(() => {
@@ -378,9 +368,11 @@ function OnboardingFlow() {
   useEffect(() => {
     if (!awaiting || !funded) return;
     setAwaiting(false);
-    refetchCredits();
+    // Marks the balance stale rather than refetching it: back from Stripe the credit is often in before the page has
+    // picked its step, while the balance query is still skipped, and refetching a skipped query throws.
+    dispatch(api.util.invalidateTags(["Credits"]));
     void dock.dock("credits").then(() => go(LAST));
-  }, [awaiting, funded, refetchCredits, dock, go]);
+  }, [awaiting, funded, dispatch, dock, go]);
 
   const toastRef = useRef(toast);
   useEffect(() => {
@@ -400,7 +392,6 @@ function OnboardingFlow() {
     payRef.current = h;
     setPayReady(!!h);
   }, []);
-  const onSaved = useCallback(() => setAwaiting(true), []);
 
   if (status === "idle" || status === "loading") return <FullPageLoader />;
 
@@ -445,6 +436,7 @@ function OnboardingFlow() {
         ) : null}
       </>
     );
+  else if (!hasOrg && paramDomain && !startErr) body = <OnboardingSkeleton />;
   else if (!hasOrg) body = <DomainPrompt busy={workspace.isLoading} error={startErr} initial={paramDomain} onStart={(d) => workspace.run(d).catch((e) => setStartErr(errorMessage(e)))} />;
   else if (isError) body = <ErrorState error={error} onRetry={refetch} />;
   else if (isLoading || !state || !cat) body = <OnboardingSkeleton />;
@@ -510,7 +502,7 @@ function OnboardingFlow() {
           orgId={activeOrgId ?? ""}
           awaiting={awaiting}
           register={registerPay}
-          onSaved={onSaved}
+          cancelled={cardCancelled}
           onBusy={setBusy}
           skipBusy={skipState.isLoading}
           onSkip={() =>
@@ -526,7 +518,7 @@ function OnboardingFlow() {
 
   const isAuth = cur === 0;
   const ready = authed && !!o && !!draft && !!cat;
-  const labels = ["", "See my free overview", "Choose emails a day", draft && volume?.ready ? `Continue with ${draft.emails.toLocaleString("en-US")} a day` : "Continue", funded ? "Start my campaign" : "Add card and start", ""];
+  const labels = ["", "See my free overview", "Set my daily budget", draft && volume?.ready ? `Continue with ${budgetOf(draft.emails)} a day` : "Continue", funded ? "Start my campaign" : "Add card with Stripe", ""];
   const disabled = busy || nextDisabled || (cur === 3 && !volume?.ready) || (cur === 4 && !funded && (!payReady || awaiting));
   const cta =
     ready && cur >= 1 && cur < LAST ? (
@@ -534,7 +526,7 @@ function OnboardingFlow() {
         {busy || awaiting ? (
           <>
             <span className="spinner" />
-            {awaiting ? "Confirming payment" : "Processing"}
+            {awaiting ? "Confirming your card" : cur === 4 && !funded ? "Opening Stripe" : "Processing"}
           </>
         ) : (
           <>
@@ -569,16 +561,16 @@ function OnboardingFlow() {
         }
       : null;
   const total = ready && draft && cat && state && cur >= 3 ? runningTotal(cur, draft, cat, state, volume?.stops ?? cat.volume.stops) : null;
-  // The value bar appears once there is something worth buying: when the market numbers land.
-  const valueReady = ready && cur >= 1 && cur < LAST && (presenting ? run.stepState.size === "done" : !!o?.analyzedAt && !!market);
   const showRail = ready && !isAuth;
+  // Under each step's heading, once the step has something to act on (not while the analysis is still playing).
+  const stepCta = !isAuth && !presenting && !(cur === 1 && !o?.analyzedAt) ? cta : null;
 
   return (
     <div id="onboard" className={`lv-app${isAuth ? " is-auth" : ""}`} style={{ minHeight: "100vh" }}>
       {isAuth ? (
         <AuthHeader />
       ) : (
-        <ValueBar cta={valueReady || cur === LAST ? cta : null} compact={!valueReady} exitLabel="Save and exit" onExit={() => router.push(authed ? "/app" : "/")} />
+        <ValueBar />
       )}
       <div className={`lv-shell${showRail ? "" : " no-rail"}`}>
         {showRail ? (
@@ -635,9 +627,10 @@ function OnboardingFlow() {
             />
           ) : null}
           <div className="ob-view" ref={viewRef} tabIndex={-1} key={`${cur}-${domain}`}>
-            <div ref={DOCK_ON_NEXT[cur] ? dock.source(DOCK_ON_NEXT[cur]) : undefined}>{body}</div>
+            <StepCtaContext.Provider value={stepCta}>
+              <div ref={DOCK_ON_NEXT[cur] ? dock.source(DOCK_ON_NEXT[cur]) : undefined}>{body}</div>
+            </StepCtaContext.Provider>
           </div>
-          {!valueReady && cur !== LAST && cta && !isAuth && !presenting && !(cur === 1 && !o?.analyzedAt) ? <div className="lv-next">{cta}</div> : null}
         </main>
       </div>
       {ready && !isAuth && (cta || total) ? (

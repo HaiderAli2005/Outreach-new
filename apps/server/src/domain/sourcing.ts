@@ -1,6 +1,6 @@
 import { approval } from "./approval.js";
 import { randomUUID } from "node:crypto";
-import type { Campaign, Prisma } from "@prisma/client";
+import type { Campaign, Prisma, Prospect } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { extractDomain, isFreeMailDomain } from "../lib/normalize.js";
 import { apolloFor, type ApolloPerson } from "../integrations/apollo.js";
@@ -9,10 +9,11 @@ import { tzFromLocation } from "./sending/schedule.js";
 import { partitionCandidates } from "./dedup.js";
 import { scoreContact, SEND_FLOOR } from "./scoring.js";
 import { addUsage } from "./usage.js";
-import { brandProfileOf, getSettings } from "./settings.js";
+import { autoApproves, brandProfileOf, getSettings } from "./settings.js";
 import { refreshSourcedCount } from "./batches.js";
 import { availableOf, customerOf, SEQUENCE_HOLD } from "./credits/index.js";
 import { logSystem } from "./systemLog.js";
+import { growFromMaps } from "./mapsSourcing.js";
 
 export interface SourcingResult {
   searched: number;
@@ -38,6 +39,8 @@ export interface AudienceTarget {
   filters: Record<string, unknown>;
   page: number;
   saturatedAt: string | null;
+  /** "maps": found on Google Maps only, never on the lead search. */
+  source?: "apollo" | "maps" | "both";
 }
 
 /** An audience that ran out of new people rests this long before it is searched again from page 1. */
@@ -63,11 +66,17 @@ export function audiencesOf(campaign: Pick<Campaign, "audiences">): AudienceTarg
 const resting = (a: AudienceTarget, now = Date.now()) => !!a.saturatedAt && now - Date.parse(a.saturatedAt) < AUDIENCE_REST_MS;
 
 /** Which filters and page to search this round: the next audience in turn, or the campaign's own filters. */
-function pickTarget(campaign: Campaign): { filters: Record<string, unknown>; page: number; index: number; list: AudienceTarget[] } | null {
+function pickTarget(campaign: Campaign, only?: string): { filters: Record<string, unknown>; page: number; index: number; list: AudienceTarget[] } | "maps-only" | null {
   const list = audiencesOf(campaign);
+  if (only) {
+    // One named audience (a campaign just made): searched now, whatever the turn order says.
+    const i = list.findIndex((a) => a.id === only);
+    const a = list[i];
+    return a && a.source !== "maps" && !resting(a) ? { filters: a.filters, page: Math.max(1, a.page || 1), index: i, list } : "maps-only";
+  }
   if (!list.length) return { filters: (campaign.apolloFilters ?? {}) as Record<string, unknown>, page: campaign.sourcePage, index: -1, list };
-  const open = list.map((a, i) => ({ a, i })).filter(({ a }) => !resting(a));
-  if (!open.length) return null;
+  const open = list.map((a, i) => ({ a, i })).filter(({ a }) => !resting(a) && a.source !== "maps");
+  if (!open.length) return list.every((a) => a.source === "maps") ? "maps-only" : null;
   const from = campaign.audienceCursor % list.length;
   const pick = open.find(({ i }) => i >= from) ?? open[0];
   return { filters: pick.a.filters, page: Math.max(1, pick.a.page || 1), index: pick.i, list };
@@ -78,76 +87,194 @@ const empty = (): SourcingResult => ({
   saturated: false, outOfCredits: false, audience: null,
 });
 
+/** People per search page while building the list (Apollo's maximum). */
+const LIST_PAGE_SIZE = 100;
+/** Search pages per run while building a campaign's list: 1,000 people a run at most. */
+export const LIST_PAGES_PER_RUN = 10;
+/** A campaign's list stops growing at this many people still waiting; it tops up as people are pulled. */
+export const LIST_TARGET = 5000;
+/** Grow the list when fewer than this many are waiting, so pulling never has to wait for a search. */
+const LIST_LOW_WATER = 200;
+
+export interface ListResult {
+  pages: number;
+  searched: number;
+  added: number;
+  duplicates: number;
+  blocked: number;
+  lowFit: number;
+  saturated: boolean;
+}
+
+/** How many people wait in a campaign's list (or every campaign's, without one). */
+export function waitingInList(orgId: string, campaignId?: string) {
+  return prisma.prospect.count({ where: { organizationId: orgId, ...(campaignId ? { campaignId } : {}), status: "WAITING" } });
+}
+
 /**
- * One round of lead finding for a campaign: search one page, skip people we can't or shouldn't email, then reveal
- * emails in small chunks. Finding people is free for the customer; it never runs ahead of what their balance can
- * send, so nobody is found who couldn't be emailed.
+ * Build a campaign's audience list: page through the lead search (free: it returns people, not emails) and save
+ * everyone who fits, skipping people already in a list or already contacted and blocked companies. Nothing here
+ * costs the customer or a lead credit, so it is not limited by the balance: the list can hold thousands. Emails are
+ * looked up later, only for the people about to be emailed (pullFromList).
+ */
+export async function growList(orgId: string, campaignId: string, opts: { pages?: number; audienceId?: string } = {}): Promise<ListResult> {
+  const out: ListResult = { pages: 0, searched: 0, added: 0, duplicates: 0, blocked: 0, lowFit: 0, saturated: false };
+  const apollo = await apolloFor(orgId);
+  if (!apollo) return out;
+  const audience = brandProfileOf(await getSettings(orgId)).audience;
+  const pages = opts.pages ?? LIST_PAGES_PER_RUN;
+  for (let i = 0; i < pages; i++) {
+    if ((await waitingInList(orgId, campaignId)) >= LIST_TARGET) break;
+    const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
+    if (!campaign || campaign.status !== "ACTIVE") break;
+    const target = pickTarget(campaign, opts.audienceId);
+    // Every audience left finds its people on Google Maps (growFromMaps), so there is nothing to search here.
+    if (target === "maps-only") break;
+    if (!target) {
+      // Every audience is resting: the campaign as a whole has run out of new people for now.
+      await prisma.campaign.update({ where: { id: campaign.id }, data: { saturatedAt: new Date() } });
+      out.saturated = true;
+      break;
+    }
+    let people: ApolloPerson[];
+    try {
+      ({ people } = await apollo.searchPeople(target.filters, target.page, LIST_PAGE_SIZE));
+    } catch (err) {
+      const e = err as { status?: number; message?: string };
+      // One campaign's search the lead search refuses (a bad filter) rests that campaign; the others carry on.
+      if (target.index < 0 || (e.status && e.status !== 422 && e.status !== 400)) throw err;
+      const bad = target.list[target.index];
+      await logSystem(orgId, "WARN", "sourcing", `The lead search refused the search for "${bad.name}" (${e.message ?? "invalid search"}). Check its keywords, titles and locations under Targeting; your other campaigns carry on.`.slice(0, 500));
+      const list = target.list.map((a, k) => (k === target.index ? { ...a, saturatedAt: new Date().toISOString() } : a));
+      await prisma.campaign.update({ where: { id: campaign.id }, data: { audiences: list as unknown as Prisma.InputJsonValue, audienceCursor: target.index + 1 } });
+      if (opts.audienceId) break;
+      continue;
+    }
+    await addUsage(orgId, "searches");
+    out.pages++;
+    out.searched += people.length;
+    const pageSaturated = people.length < LIST_PAGE_SIZE;
+
+    const ids = people.map((p) => p.id).filter((x): x is string => !!x);
+    const [contacts, listed] = await Promise.all([
+      prisma.contact.findMany({ where: { organizationId: orgId, apolloId: { in: ids } }, select: { apolloId: true } }),
+      prisma.prospect.findMany({ where: { organizationId: orgId, apolloId: { in: ids } }, select: { apolloId: true } }),
+    ]);
+    const known = new Set([...contacts, ...listed].map((c) => c.apolloId));
+    const domains = [...new Set(people.map(orgDomain).filter((d): d is string => !!d && !isFreeMailDomain(d)))];
+    const blockedDomains = new Set(
+      (await prisma.blocklistEntry.findMany({ where: { organizationId: orgId, entryType: "DOMAIN", value: { in: domains } }, select: { value: true } })).map((b) => b.value),
+    );
+    const audienceId = target.index >= 0 ? (target.list[target.index].id ?? null) : null;
+    const rows: Prisma.ProspectCreateManyInput[] = [];
+    for (const p of people) {
+      if (!p.id || known.has(p.id)) {
+        out.duplicates++;
+        continue;
+      }
+      known.add(p.id);
+      const domain = orgDomain(p);
+      if (domain && blockedDomains.has(domain)) {
+        out.blocked++;
+        continue;
+      }
+      // Scored from what the search shows, so nobody we would never email is kept or ever costs a lead credit.
+      const { fitScore } = scoreContact(
+        { title: p.title, seniority: p.seniority, emailStatus: p.email_status, employees: p.organization?.estimated_num_employees, industry: p.organization?.industry, website: p.organization?.website_url, linkedinUrl: p.linkedin_url },
+        audience,
+      );
+      if (fitScore < SEND_FLOOR) {
+        out.lowFit++;
+        continue;
+      }
+      rows.push({
+        organizationId: orgId,
+        campaignId,
+        audienceId,
+        apolloId: p.id,
+        fullName: p.name ?? ([p.first_name, p.last_name].filter(Boolean).join(" ") || null),
+        title: p.title ?? null,
+        seniority: p.seniority ?? null,
+        company: p.organization?.name ?? p.organization_name ?? null,
+        companyDomain: domain,
+        country: p.country ?? p.organization?.country ?? null,
+        employees: p.organization?.estimated_num_employees ?? null,
+        fitScore,
+      });
+    }
+    if (rows.length) out.added += (await prisma.prospect.createMany({ data: rows, skipDuplicates: true })).count;
+
+    if (target.index >= 0) {
+      const list = target.list.map((a, k) =>
+        k === target.index ? { ...a, page: pageSaturated ? 1 : target.page + 1, saturatedAt: pageSaturated ? new Date().toISOString() : null } : a,
+      );
+      await prisma.campaign.update({
+        where: { id: campaign.id },
+        data: { audiences: list as unknown as Prisma.InputJsonValue, audienceCursor: target.index + 1, saturatedAt: list.every((a) => resting(a)) ? new Date() : null },
+      });
+    } else {
+      await prisma.campaign.update({ where: { id: campaign.id }, data: pageSaturated ? { sourcePage: 1, saturatedAt: new Date() } : { sourcePage: { increment: 1 } } });
+      if (pageSaturated) {
+        out.saturated = true;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * One round of lead finding for a campaign: take the best-fit people waiting in its list (growing the list first if
+ * it runs low), look up their emails in small chunks and store the ones that can be emailed. The lookup is what
+ * costs, so it never runs ahead of what the balance can send: nobody is pulled who couldn't be emailed.
  */
 export async function sourceForCampaign(orgId: string, campaign: Campaign, opts: { maxEnrich: number; batchId: string | null }): Promise<SourcingResult> {
   const result = empty();
   const apollo = await apolloFor(orgId);
   if (!apollo || opts.maxEnrich <= 0) return result;
-  const target = pickTarget(campaign);
-  if (!target) {
-    // Every audience is resting: the campaign as a whole has run out of new people for now.
-    await prisma.campaign.update({ where: { id: campaign.id }, data: { saturatedAt: new Date() } });
-    return { ...result, saturated: true };
-  }
-  if (target.index >= 0) result.audience = target.list[target.index].name;
   const settings = await getSettings(orgId);
   const audience = brandProfileOf(settings).audience;
-  const perPage = 25;
-  const { people } = await apollo.searchPeople(target.filters, target.page, perPage);
-  await addUsage(orgId, "searches");
-  result.searched = people.length;
-  if (people.length < perPage) result.saturated = true;
 
-  const apolloIds = people.map((p) => p.id).filter((x): x is string => !!x);
-  const known = new Set(
-    (await prisma.contact.findMany({ where: { organizationId: orgId, apolloId: { in: apolloIds } }, select: { apolloId: true } })).map((c) => c.apolloId),
-  );
-  const domains = [...new Set(people.map(orgDomain).filter((d): d is string => !!d && !isFreeMailDomain(d)))];
-  const blockedDomains = new Set(
-    (await prisma.blocklistEntry.findMany({ where: { organizationId: orgId, entryType: "DOMAIN", value: { in: domains } }, select: { value: true } })).map((b) => b.value),
-  );
-  const candidates = people.filter((p) => p.id && !known.has(p.id));
-  result.duplicates += people.length - candidates.length;
-  const unblocked = candidates.filter((p) => !blockedDomains.has(orgDomain(p) ?? ""));
-  result.blocked += candidates.length - unblocked.length;
-  // Score from what the search already shows, so nobody we would never email costs an Apollo credit.
-  const fit = (p: ApolloPerson) =>
-    scoreContact(
-      { title: p.title, seniority: p.seniority, emailStatus: p.email_status, employees: p.organization?.estimated_num_employees, industry: p.organization?.industry, website: p.organization?.website_url, linkedinUrl: p.linkedin_url },
-      audience,
-    );
-  const worth = unblocked.filter((p) => fit(p).fitScore >= SEND_FLOOR);
-  result.lowFit = unblocked.length - worth.length;
+  if ((await waitingInList(orgId, campaign.id)) < Math.max(LIST_LOW_WATER, opts.maxEnrich * 2)) {
+    const grown = await growList(orgId, campaign.id, { pages: 3 });
+    await growFromMaps(orgId, campaign.id).catch(() => undefined);
+    result.searched += grown.searched;
+    result.duplicates += grown.duplicates;
+    result.blocked += grown.blocked;
+    result.lowFit += grown.lowFit;
+  }
 
-  // Never find more people than the balance can start sequences for, counting those already waiting.
+  // Never pull more people than the balance can start sequences for, counting those already waiting.
   const affordable = Number((await availableOf(await customerOf(orgId))) / SEQUENCE_HOLD);
   const waiting = await prisma.contact.count({ where: { organizationId: orgId, status: { in: ["NEW", "PERSONALIZED", "QUEUED"] }, fitScore: { gte: SEND_FLOOR } } });
   const room = Math.max(0, affordable - waiting);
   if (room <= 0) result.outOfCredits = true;
-  const toEnrich = worth.slice(0, Math.min(opts.maxEnrich, room));
+  const take = Math.min(opts.maxEnrich, room);
 
-  for (let i = 0; i < toEnrich.length; i += ENRICH_CHUNK) {
-    await enrichAndStore(orgId, campaign, toEnrich.slice(i, i + ENRICH_CHUNK), opts.batchId, settings.perCompanyContactCap, audience, result, target.index >= 0 ? (target.list[target.index].id ?? null) : null, settings.autoApproveBatches);
+  const picked = take ? await pickFairly(orgId, campaign, take) : [];
+  if (!picked.length) {
+    const fresh = await prisma.campaign.findUnique({ where: { id: campaign.id }, select: { saturatedAt: true } });
+    result.saturated = !!fresh?.saturatedAt && !(await waitingInList(orgId, campaign.id));
+    return result;
   }
+  // Claimed before the lookup, so two runs never pay for the same person.
+  const claimed = await prisma.prospect.updateMany({ where: { id: { in: picked.map((p) => p.id) }, status: "WAITING" }, data: { status: "PULLED", pulledAt: new Date() } });
+  if (claimed.count !== picked.length) {
+    const mine = await prisma.prospect.findMany({ where: { id: { in: picked.map((p) => p.id) }, status: "PULLED" }, select: { id: true } });
+    const ids = new Set(mine.map((m) => m.id));
+    picked.splice(0, picked.length, ...picked.filter((p) => ids.has(p.id)));
+  }
+  result.audience = picked[0]?.audienceId ? (audiencesOf(campaign).find((a) => a.id === picked[0].audienceId)?.name ?? null) : null;
 
-  if (target.index >= 0) {
-    const list = target.list.map((a, i) =>
-      i === target.index ? { ...a, page: result.saturated ? 1 : target.page + 1, saturatedAt: result.saturated ? new Date().toISOString() : null } : a,
-    );
-    const allResting = list.every((a) => resting(a));
-    await prisma.campaign.update({
-      where: { id: campaign.id },
-      data: { audiences: list as unknown as Prisma.InputJsonValue, audienceCursor: target.index + 1, saturatedAt: allResting ? new Date() : null },
-    });
-  } else {
-    await prisma.campaign.update({
-      where: { id: campaign.id },
-      data: result.saturated ? { sourcePage: 1, saturatedAt: new Date() } : { sourcePage: { increment: 1 } },
-    });
+  // Businesses from Google Maps with no named person: the address their own site publishes, nothing to look up.
+  const published = picked.filter((p) => p.source === "maps-site" && p.email);
+  if (published.length) await storePublished(orgId, campaign, published, opts.batchId, settings.perCompanyContactCap, result, autoApproves(settings));
+  const byAudience = new Map<string | null, ApolloPerson[]>();
+  for (const p of picked) if (p.source !== "maps-site") byAudience.set(p.audienceId, [...(byAudience.get(p.audienceId) ?? []), { id: p.apolloId }]);
+  for (const [audienceId, people] of byAudience) {
+    for (let i = 0; i < people.length; i += ENRICH_CHUNK) {
+      await enrichAndStore(orgId, campaign, people.slice(i, i + ENRICH_CHUNK), opts.batchId, settings.perCompanyContactCap, audience, result, audienceId, autoApproves(settings));
+    }
   }
   if (opts.batchId && result.inserted) await refreshSourcedCount(orgId, opts.batchId);
   return result;
@@ -267,4 +394,83 @@ async function enrichAndStore(
     }
   }
   return kept;
+}
+
+/**
+ * People found as a business on Google Maps with no named person: the address the business publishes on its own
+ * site. Stored like anyone else (deduplicated, blocklists, per-company cap) and verified before the first email.
+ */
+async function storePublished(
+  orgId: string,
+  campaign: Campaign,
+  rows: Prospect[],
+  batchId: string | null,
+  perCompanyCap: number,
+  result: SourcingResult,
+  autoApprove: boolean,
+): Promise<void> {
+  const { fresh, duplicates, blocked, capped } = await partitionCandidates(
+    orgId,
+    rows.map((p) => ({ email: p.email!, companyDomain: p.companyDomain, person: p })),
+    { perCompanyCap },
+  );
+  result.duplicates += duplicates.length;
+  result.blocked += blocked.length;
+  result.capped += capped.length;
+  for (const c of fresh) {
+    const p = c.person;
+    try {
+      await prisma.contact.create({
+        data: {
+          organizationId: orgId,
+          email: c._email,
+          emailNormalized: c._normalized,
+          domain: c._normalized.split("@")[1] ?? null,
+          companyDomain: p.companyDomain,
+          company: p.company,
+          website: p.companyDomain ? `https://${p.companyDomain}` : null,
+          city: p.city,
+          country: p.country,
+          location: [p.city, p.country].filter(Boolean).join(", ") || null,
+          campaignId: campaign.id,
+          audienceId: p.audienceId,
+          batchId,
+          ...(autoApprove ? approval("auto") : {}),
+          source: "maps",
+          emailSource: "website",
+          timezone: tzFromLocation(p.country, null, p.city),
+          fitScore: p.fitScore,
+          tier: p.fitScore >= 70 ? "A" : p.fitScore >= 50 ? "B" : "C",
+          raw: { maps: { placeId: p.placeId } } as Prisma.InputJsonValue,
+        },
+      });
+      result.inserted++;
+    } catch {
+      result.duplicates++;
+    }
+  }
+}
+
+/**
+ * Who gets their email looked up this round. Only audiences that are on, and an even share for each: picking by
+ * fit alone let the audience searched first take every turn, so campaigns added later never got anyone. A share an
+ * audience can't fill goes to the others, best fit first.
+ */
+async function pickFairly(orgId: string, campaign: Campaign, take: number): Promise<Prospect[]> {
+  const order = [{ fitScore: "desc" as const }, { createdAt: "asc" as const }];
+  const base = { organizationId: orgId, campaignId: campaign.id, status: "WAITING" as const };
+  const on = audiencesOf(campaign).map((a) => a.id);
+  if (!on.length) return prisma.prospect.findMany({ where: base, orderBy: order, take });
+  const share = Math.max(1, Math.ceil(take / on.length));
+  const picked: Prospect[] = [];
+  // A different audience leads each round, so with fewer turns than audiences nobody is always last.
+  const start = Math.floor(Date.now() / 60_000) % on.length;
+  for (const id of [...on.slice(start), ...on.slice(0, start)]) {
+    if (picked.length >= take) break;
+    picked.push(...(await prisma.prospect.findMany({ where: { ...base, audienceId: id }, orderBy: order, take: Math.min(share, take - picked.length) })));
+  }
+  if (picked.length < take) {
+    picked.push(...(await prisma.prospect.findMany({ where: { ...base, audienceId: { in: on }, id: { notIn: picked.map((p) => p.id) } }, orderBy: order, take: take - picked.length })));
+  }
+  return picked;
 }

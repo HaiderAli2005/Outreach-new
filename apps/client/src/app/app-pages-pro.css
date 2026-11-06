@@ -1,0 +1,986 @@
+/*
+ * Every app page in the dashboard's design language: Leads, Inbox, campaign pages, Approve, Settings, Credits,
+ * Suppress list and setup. Works through the shared building blocks (page titles, cards, stat strips, tables,
+ * chips, tabs, empty states), with colours from each theme's tokens. Dark-only glow and light-only paper shadow are
+ * set once below as --pg-lift; nothing here changes the website or onboarding.
+ */
+
+:root:not([data-theme="light"]) .ap-shell {
+  --pg-lift: 0 1px 0 rgb(0 0 0 / 0.4);
+  --pg-row-on: rgb(242 185 94 / 0.07);
+}
+html[data-theme="light"] .ap-shell {
+  --pg-lift: 0 1px 2px rgb(60 42 14 / 0.06), 0 10px 26px -18px rgb(60 42 14 / 0.22);
+  --pg-row-on: rgb(220 157 56 / 0.09);
+}
+
+/* ── one font: the sans with even figures; the code font only where it carries meaning ─────────────────────── */
+.ap-shell .ap-view {
+  --font-geist-mono: var(--font-geist-sans);
+  --f-mono: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.ap-shell .ap-view :is(.mono, code, kbd, .addr, .tok, .key code, .ibx-addr) {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace !important;
+}
+
+/* ── page titles ───────────────────────────────────────────────────────────────────────────────────────── */
+.ap-shell .ap-view .ob-h.sm,
+.ap-shell .ap-view .ibx-title h1,
+.ap-shell .cw-name h1 {
+  font-family: var(--font-geist-sans), sans-serif !important;
+  font-size: 28px !important;
+  font-weight: 650 !important;
+  letter-spacing: -0.035em !important;
+  color: var(--ink);
+}
+.ap-shell .ap-view .ob-kicker {
+  font: 600 11px var(--font-geist-sans), sans-serif;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.ap-shell .ap-view .ob-p {
+  color: var(--ink-3);
+  font-size: 14.5px;
+}
+.ap-shell .ap-view .section-h,
+.ap-shell .ap-view .panel h3,
+.ap-shell .cw-sec h2,
+.ap-shell .cw-kpis dt {
+  font-family: var(--font-geist-sans), sans-serif;
+}
+.ap-shell .ap-view .section-h {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* ── cards: flat surface, crisp edge, the theme's lift ─────────────────────────────────────────────────── */
+.ap-shell .ap-view :is(.glass, .panel, .tbl-wrap):not(.stats3):not(.stats4):not(.btn):not(.pill-btn):not(.budget-card.line):not(.notice) {
+  background: var(--surface) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 1px var(--hair), var(--pg-lift) !important;
+}
+.ap-shell .ap-view :is(.glass, .panel, .tbl-wrap):not(.notice)::before,
+.ap-shell .ap-view :is(.glass, .panel, .tbl-wrap):not(.notice)::after {
+  display: none !important;
+}
+
+/* ── stat strips become separate tiles, big numbers, small uppercase labels ────────────────────────────── */
+.ap-shell .ap-view :is(.stats3, .stats4) {
+  gap: 12px;
+  background: none !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  overflow: visible;
+  border-radius: 0;
+}
+.ap-shell .ap-view :is(.stats3, .stats4)::before,
+.ap-shell .ap-view :is(.stats3, .stats4)::after {
+  display: none !important;
+}
+.ap-shell .ap-view :is(.stats3, .stats4) .stat {
+  position: relative;
+  overflow: hidden;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--hair), var(--pg-lift) !important;
+  transition: box-shadow 0.2s var(--ease);
+}
+.ap-shell .ap-view :is(.stats3, .stats4) .stat::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  opacity: 0;
+  transition: opacity 0.2s var(--ease);
+}
+.ap-shell .ap-view :is(.stats3, .stats4) .stat:hover::before {
+  opacity: 0.8;
+}
+.ap-shell .ap-view .stat .big {
+  font: 650 30px/1.05 var(--font-geist-sans), sans-serif !important;
+  letter-spacing: -0.035em;
+  color: var(--ink);
+}
+.ap-shell .ap-view .stat .big small {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+.ap-shell .ap-view .stat .sub {
+  margin-top: 6px;
+  font: 600 11px var(--font-geist-sans), sans-serif;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ap-shell .ap-view .stat .sub + .sub {
+  font: 400 12.5px var(--font-geist-sans), sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--gold);
+}
+
+/* ── tables ────────────────────────────────────────────────────────────────────────────────────────────── */
+.ap-shell .ap-view .tbl th,
+.ap-shell .ap-view .cw-tbl th {
+  font: 600 11px var(--font-geist-sans), sans-serif;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  background: var(--surface);
+  border-bottom: 1px solid var(--hair);
+}
+.ap-shell .ap-view .tbl td,
+.ap-shell .ap-view .cw-tbl td {
+  border-bottom-color: var(--hair);
+  color: var(--ink-2);
+}
+.ap-shell .ap-view .tbl tbody tr,
+.ap-shell .ap-view .cw-tbl tbody tr {
+  transition: background 0.15s var(--ease);
+}
+.ap-shell .ap-view .tbl tbody tr:hover,
+.ap-shell .ap-view .cw-tbl tbody tr:hover {
+  background: var(--pg-row-on);
+}
+.ap-shell .ap-view .tbl td .m {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.ap-shell .ap-view .tbl td b,
+.ap-shell .ap-view .tbl td.strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ── status chips: rounded pills with a dot ────────────────────────────────────────────────────────────── */
+.ap-shell .ap-view .chip-s,
+.ap-shell .cw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px 4px 8px;
+  border-radius: 99px;
+  font: 600 11px/1 var(--font-geist-sans), sans-serif;
+  letter-spacing: 0.01em;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent);
+}
+.ap-shell .ap-view .chip-s::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.ap-shell .ap-view .chip-s.b {
+  color: var(--gold);
+}
+
+/* ── tabs and segmented controls share one active look ─────────────────────────────────────────────────── */
+.ap-shell .ap-view :is(.tabs, .seg) {
+  background: var(--field);
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+.ap-shell .ap-view .tabs :is(a, button) {
+  transition: color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.ap-shell .ap-view .tabs :is(a, button):hover {
+  color: var(--ink);
+}
+.ap-shell .ap-view .tabs :is(a[aria-current="page"], a[aria-current="true"], button[aria-pressed="true"], button[aria-selected="true"], .on) {
+  color: var(--ink);
+  background: var(--pg-row-on);
+  box-shadow: inset 0 0 0 1px var(--gold-line);
+}
+.ap-shell .cw-tabs button[aria-pressed="true"],
+.ap-shell .cw-tabs button[aria-selected="true"] {
+  color: var(--ink);
+}
+.ap-shell .cw-tabs button[aria-pressed="true"]::after,
+.ap-shell .cw-tabs button[aria-selected="true"]::after {
+  background: var(--gold) !important;
+}
+
+/* ── empty states: an icon tile with the gold dot texture ──────────────────────────────────────────────── */
+.ap-shell .ap-view .empty .ic-box,
+.ap-shell .ap-view .ibx-empty .ic-box {
+  position: relative;
+  overflow: hidden;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  color: var(--gold);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--gold-line);
+}
+.ap-shell .ap-view .empty .ic-box::before,
+.ap-shell .ap-view .ibx-empty .ic-box::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(color-mix(in srgb, var(--gold) 45%, transparent) 1px, transparent 1.5px);
+  background-size: 6px 6px;
+  -webkit-mask-image: radial-gradient(circle at 0 0, #000, transparent 80%);
+  mask-image: radial-gradient(circle at 0 0, #000, transparent 80%);
+}
+.ap-shell .ap-view .empty .ic-box svg,
+.ap-shell .ap-view .ibx-empty .ic-box svg {
+  position: relative;
+  width: 22px;
+  height: 22px;
+}
+.ap-shell .ap-view .empty b {
+  font: 650 18px var(--font-geist-sans), sans-serif;
+  letter-spacing: -0.02em;
+}
+
+/* ── inbox ─────────────────────────────────────────────────────────────────────────────────────────────── */
+.ap-shell .ibx-row {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--hair);
+  border-radius: 12px;
+}
+.ap-shell .ibx-row:hover {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--hair-2);
+}
+.ap-shell .ibx-row[aria-current="true"] {
+  background: linear-gradient(90deg, var(--pg-row-on), transparent 70%), var(--surface);
+  box-shadow: inset 0 0 0 1px var(--gold-line), inset 3px 0 0 var(--gold);
+}
+.ap-shell .ibx-row.is-unread .ibx-row-top b {
+  color: var(--ink);
+  font-weight: 650;
+}
+.ap-shell .ibx-row.is-unread::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  top: 16px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 18%, transparent);
+}
+:root:not([data-theme="light"]) .ap-shell .ibx-row.is-unread::after {
+  box-shadow: 0 0 0 3px rgb(242 185 94 / 0.15), 0 0 8px rgb(242 185 94 / 0.8);
+}
+.ap-shell .ibx-th-head {
+  background: color-mix(in srgb, var(--surface) 92%, transparent) !important;
+  border-bottom: 1px solid var(--hair);
+}
+
+/* ── campaign pages ────────────────────────────────────────────────────────────────────────────────────── */
+.ap-shell .cw-kpis {
+  border-top-color: var(--hair);
+}
+.ap-shell .cw-kpis > div {
+  border-left-color: var(--hair);
+}
+.ap-shell .cw-kpis dt {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ap-shell .cw-kpis dd {
+  font: 650 26px/1 var(--font-geist-sans), sans-serif !important;
+  letter-spacing: -0.035em;
+}
+
+/* ── settings rows ─────────────────────────────────────────────────────────────────────────────────────── */
+.ap-shell .ap-view .setting {
+  border-color: var(--hair);
+}
+.ap-shell .ap-view .setting .t b {
+  font-weight: 600;
+  color: var(--ink);
+}
+.ap-shell .ap-view .setting .t small {
+  color: var(--ink-3);
+}
+
+/* ── every page's sections arrive one after another ────────────────────────────────────────────────────── */
+.ap-shell .ap-view > *:not(.cpt) {
+  animation: pro-in 0.5s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.ap-shell .ap-view > :nth-child(2) { animation-delay: 0.04s; }
+.ap-shell .ap-view > :nth-child(3) { animation-delay: 0.08s; }
+.ap-shell .ap-view > :nth-child(4) { animation-delay: 0.12s; }
+.ap-shell .ap-view > :nth-child(5) { animation-delay: 0.16s; }
+.ap-shell .ap-view > :nth-child(n + 6) { animation-delay: 0.2s; }
+.ap-shell .ap-view :is(.stats3, .stats4) .stat {
+  animation: pro-in 0.5s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.ap-shell .ap-view :is(.stats3, .stats4) .stat:nth-child(2) { animation-delay: 0.05s; }
+.ap-shell .ap-view :is(.stats3, .stats4) .stat:nth-child(3) { animation-delay: 0.1s; }
+.ap-shell .ap-view :is(.stats3, .stats4) .stat:nth-child(4) { animation-delay: 0.15s; }
+
+@media (max-width: 760px) {
+  .ap-shell .ap-view .ob-h.sm,
+  .ap-shell .ap-view .ibx-title h1,
+  .ap-shell .cw-name h1 {
+    font-size: 24px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ap-shell .ap-view > *,
+  .ap-shell .ap-view :is(.stats3, .stats4) .stat {
+    animation: none;
+  }
+}
+
+/* ── Leads: the funnel from audience list to leads ─────────────────────────────────────────────────────── */
+.ap-shell .ld-funnel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 0 0 18px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+.ap-shell .ld-funnel > i {
+  font-style: normal;
+  color: var(--ink-4);
+}
+.ap-shell .ld-step {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  white-space: nowrap;
+}
+.ap-shell .ld-step b {
+  font: 650 20px/1 var(--font-geist-sans), sans-serif;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.ap-shell .ld-step span {
+  font: 400 13px var(--font-geist-sans), sans-serif;
+  color: var(--ink-3);
+}
+.ap-shell .ld-step.is-key b,
+.ap-shell .ld-step.is-key span {
+  color: var(--gold);
+}
+.ap-shell .ld-rest {
+  margin-left: auto;
+  font: 400 12.5px var(--font-geist-sans), sans-serif;
+  color: var(--ink-3);
+}
+.ap-shell .btn-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 550;
+  color: var(--gold);
+  cursor: pointer;
+}
+.ap-shell .btn-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.ap-shell .num-cell {
+  white-space: nowrap;
+}
+@media (max-width: 760px) {
+  .ap-shell .ld-rest {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+}
+
+/* ── New campaign: the form on the left, the audience card from setup on the right ──────────────────── */
+.ap-shell .nc {
+  display: grid;
+  gap: 20px;
+  width: 100%;
+  max-width: 1180px;
+}
+.ap-shell .nc-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+  gap: 20px;
+  align-items: start;
+}
+.ap-shell .nc-form {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.ap-shell .nc-sec {
+  display: grid;
+  gap: 18px;
+  padding: 22px 24px;
+}
+.ap-shell .nc-h {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.ap-shell .nc-h h2 {
+  margin: 0;
+  font: 600 16px/1.3 var(--font-geist-sans), sans-serif;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.ap-shell .nc-h p {
+  margin: 3px 0 0;
+  font: 400 13px/1.5 var(--font-geist-sans), sans-serif;
+  color: var(--ink-3);
+}
+.ap-shell .nc-n {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font: 600 12px var(--font-geist-sans), sans-serif;
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 30%, transparent);
+  transition: background 0.25s, color 0.25s;
+}
+.ap-shell .nc-n.is-done {
+  color: var(--surface);
+  background: var(--gold);
+  box-shadow: none;
+}
+.ap-shell .nc-n svg {
+  width: 13px;
+  height: 13px;
+}
+.ap-shell .nc-body {
+  display: grid;
+  gap: 16px;
+  padding-left: 40px;
+}
+
+/* who to reach: two cards to pick from */
+.ap-shell .nc-reach {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.ap-shell .nc-opt {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 40px 14px 14px;
+  border: 0;
+  border-radius: 14px;
+  text-align: left;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--hair);
+  cursor: pointer;
+  transition: box-shadow 0.2s, background 0.2s;
+}
+.ap-shell .nc-opt:hover {
+  box-shadow: inset 0 0 0 1px var(--hair-2, var(--hair));
+}
+.ap-shell .nc-opt.on {
+  background: color-mix(in srgb, var(--gold) 7%, transparent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--gold) 65%, transparent);
+}
+.ap-shell .nc-opt-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  color: var(--ink-3);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.ap-shell .nc-opt.on .nc-opt-ic {
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+}
+.ap-shell .nc-opt-ic svg {
+  width: 16px;
+  height: 16px;
+}
+.ap-shell .nc-opt-t b {
+  display: block;
+  font: 600 13.5px/1.35 var(--font-geist-sans), sans-serif;
+  color: var(--ink);
+}
+.ap-shell .nc-opt-t small {
+  display: block;
+  margin-top: 3px;
+  font: 400 12.5px/1.45 var(--font-geist-sans), sans-serif;
+  color: var(--ink-3);
+}
+.ap-shell .nc-opt-dot {
+  position: absolute;
+  top: 16px;
+  right: 14px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--ink-4);
+}
+.ap-shell .nc-opt.on .nc-opt-dot {
+  box-shadow: inset 0 0 0 5px var(--gold);
+}
+.ap-shell .nc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+.ap-shell .nc-row b {
+  display: block;
+  font: 550 13.5px var(--font-geist-sans), sans-serif;
+  color: var(--ink);
+}
+.ap-shell .nc-row span {
+  display: block;
+  margin-top: 2px;
+  font: 400 12.5px/1.45 var(--font-geist-sans), sans-serif;
+  color: var(--ink-3);
+}
+
+/* the preview card, and the button under it */
+.ap-shell .nc-side {
+  position: sticky;
+  top: 20px;
+  display: grid;
+  gap: 14px;
+}
+.ap-shell .ncp {
+  padding: 0;
+  overflow: hidden;
+}
+.ap-shell .ncp-head {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 20px 22px 0;
+}
+.ap-shell .ncp-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 13%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 28%, transparent);
+}
+.ap-shell .ncp-ic svg {
+  width: 18px;
+  height: 18px;
+}
+.ap-shell .ncp-title {
+  min-width: 0;
+}
+.ap-shell .ncp-title h3 {
+  margin: 1px 0 0;
+  font: 600 16px/1.3 var(--font-geist-sans), sans-serif;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.ap-shell .ncp-title h3.is-empty {
+  color: var(--ink-4);
+}
+.ap-shell .ncp-title p {
+  margin: 4px 0 0;
+  font: 400 12.5px/1.5 var(--font-geist-sans), sans-serif;
+  color: var(--ink-3);
+}
+.ap-shell .ncp-count {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 16px 22px 18px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  box-shadow: inset 0 0 0 1px var(--hair);
+  transition: opacity 0.2s;
+}
+.ap-shell .ncp-count.is-busy {
+  opacity: 0.6;
+}
+.ap-shell .ncp-count b {
+  font: 650 26px/1 var(--font-geist-sans), sans-serif;
+  letter-spacing: -0.03em;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+.ap-shell .ncp-count span {
+  font: 400 12.5px/1.45 var(--font-geist-sans), sans-serif;
+  color: var(--ink-3);
+}
+.ap-shell .ncp-sec {
+  padding: 16px 22px;
+  border-top: 1px solid var(--hair);
+}
+.ap-shell .ncp h4 {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0 0 10px;
+  font: 600 11px var(--font-geist-sans), sans-serif;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ap-shell .ncp h4 span {
+  font: 400 12px var(--font-geist-sans), sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-4);
+}
+.ap-shell .ncp-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  margin: 0;
+}
+.ap-shell .ncp-facts > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.ap-shell .ncp-facts > div.wide {
+  grid-column: 1 / -1;
+}
+.ap-shell .ncp-facts dt {
+  font: 500 12px var(--font-geist-sans), sans-serif;
+  color: var(--ink-4);
+}
+.ap-shell .ncp-facts dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font: 500 13.5px/1.45 var(--font-geist-sans), sans-serif;
+  color: var(--ink);
+}
+.ap-shell .ncp-t {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font: 500 12px/1.5 var(--font-geist-sans), sans-serif;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+.ap-shell .ncp-sim {
+  font: 400 12px var(--font-geist-sans), sans-serif;
+  color: var(--ink-3);
+}
+.ap-shell .ncp-none {
+  font: 400 13px var(--font-geist-sans), sans-serif;
+  color: var(--ink-4);
+}
+.ap-shell .ncp-kws {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ap-shell .ncp-people {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ap-shell .ncp-people li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.ap-shell .ncp-av {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font: 600 12px var(--font-geist-sans), sans-serif;
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 13%, transparent);
+}
+.ap-shell .ncp-who {
+  min-width: 0;
+}
+.ap-shell .ncp-who b {
+  display: block;
+  font: 550 13px var(--font-geist-sans), sans-serif;
+  color: var(--ink);
+}
+.ap-shell .ncp-who small {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 400 12px var(--font-geist-sans), sans-serif;
+  color: var(--ink-3);
+}
+.ap-shell .nc-cta {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+.ap-shell .nc-cta .btn {
+  justify-content: center;
+}
+.ap-shell .nc-cta p {
+  grid-column: 1 / -1;
+  margin: 0;
+  font: 400 12px/1.5 var(--font-geist-sans), sans-serif;
+  color: var(--ink-4);
+}
+@media (max-width: 1080px) {
+  .ap-shell .nc-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ap-shell .nc-side {
+    position: static;
+  }
+}
+@media (max-width: 760px) {
+  .ap-shell .nc-sec {
+    padding: 18px 16px;
+  }
+  .ap-shell .nc-body {
+    padding-left: 0;
+  }
+  .ap-shell .nc-reach {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Import campaigns from a CSV ───────────────────────────────────────────────────────────────────────── */
+.icp {
+  display: grid;
+  gap: 14px;
+  margin-top: 6px;
+}
+.icp-lede {
+  margin: 0;
+  font: 400 13px/1.55 var(--font-geist-sans), sans-serif;
+  color: var(--ink-3);
+}
+.icp-drop {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1.5px var(--hair);
+  transition: box-shadow 0.2s, background-color 0.2s;
+}
+.icp-drop.is-over {
+  background-color: color-mix(in srgb, var(--gold) 7%, transparent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--gold) 60%, transparent);
+}
+.icp-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 13%, transparent);
+}
+.icp-ic svg {
+  width: 18px;
+  height: 18px;
+}
+.icp-drop-t {
+  flex: 1;
+  min-width: 0;
+}
+.icp-drop-t b {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 600 14px var(--font-geist-sans), sans-serif;
+  color: var(--ink);
+}
+.icp-drop-t span {
+  display: block;
+  margin-top: 2px;
+  font: 400 12.5px var(--font-geist-sans), sans-serif;
+  color: var(--ink-3);
+}
+.icp-tpl {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 550 13px var(--font-geist-sans), sans-serif;
+  color: var(--gold);
+  cursor: pointer;
+}
+.icp-tpl svg {
+  width: 14px;
+  height: 14px;
+}
+.icp-sum {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font: 500 13px var(--font-geist-sans), sans-serif;
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 8%, transparent);
+}
+.icp-sum.is-ok {
+  color: var(--good);
+  background: color-mix(in srgb, var(--good) 9%, transparent);
+}
+.icp-sum svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.icp-tbl {
+  display: grid;
+  max-height: 340px;
+  overflow: auto;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+.icp-tr {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1.6fr) minmax(0, 1fr) 76px minmax(0, 1.6fr);
+  gap: 12px;
+  align-items: start;
+  padding: 10px 14px;
+  border-top: 1px solid var(--hair);
+  font: 400 13px/1.45 var(--font-geist-sans), sans-serif;
+  color: var(--ink-2, var(--ink));
+}
+.icp-tr:first-child {
+  border-top: 0;
+}
+.icp-th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  font: 600 11px var(--font-geist-sans), sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+.icp-tr b {
+  display: block;
+  font-weight: 550;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.icp-tr small {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-4);
+}
+.icp-tr.is-bad {
+  background: color-mix(in srgb, var(--bad) 5%, transparent);
+}
+.icp-st i {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-style: normal;
+  font-weight: 550;
+  color: var(--good);
+}
+.icp-st i svg {
+  width: 13px;
+  height: 13px;
+}
+.icp-st em {
+  font-style: normal;
+  color: var(--bad);
+}
+@media (max-width: 640px) {
+  .icp-tr {
+    grid-template-columns: 26px minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .icp-tr > :nth-child(3),
+  .icp-tr > :nth-child(4) {
+    display: none;
+  }
+}
+
+.ap-shell .ld-src {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font: 500 11px/18px var(--font-geist-sans), sans-serif;
+  color: var(--ink-3);
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+.ap-shell .nc-src {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.ap-shell .nc-maps {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--gold) 4%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 22%, transparent);
+}
+@media (max-width: 900px) {
+  .ap-shell .nc-src {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── inbox list: no card behind it (the rows are the cards); an empty list is one quiet dashed tile ─────── */
+.ap-shell .ibx-list-head{padding:0 6px}
+.ap-shell .ap-view .ibx-list .empty{
+  margin:2px 0 0;padding:34px 22px 30px;gap:8px;border-radius:14px;
+  background:radial-gradient(120% 80% at 50% 0%,color-mix(in srgb,var(--gold) 6%,transparent),transparent 70%),var(--surface);
+  box-shadow:inset 0 0 0 1px var(--hair);
+  border:1px dashed color-mix(in srgb,var(--gold) 28%,transparent);
+}
+.ap-shell .ap-view .ibx-list .empty .ic-box{width:46px;height:46px;border-radius:14px;margin-bottom:6px;
+  box-shadow:inset 0 0 0 1px var(--gold-line),0 8px 20px -12px color-mix(in srgb,var(--gold) 60%,transparent)}
+.ap-shell .ap-view .ibx-list .empty .ic-box svg{width:20px;height:20px}
+.ap-shell .ap-view .ibx-list .empty b{font:600 15.5px var(--font-geist-sans),sans-serif;letter-spacing:-.01em}
+.ap-shell .ap-view .ibx-list .empty p{max-width:30ch;font-size:13px;line-height:1.5;color:var(--ink-3)}

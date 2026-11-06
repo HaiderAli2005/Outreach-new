@@ -2,7 +2,7 @@
 
 import { n0 } from "@/lib/format";
 import type { AdminPoolView } from "@/lib/types";
-import { Legend, LineChart, TONE } from "./charts";
+import { TONE } from "./charts";
 import { Panel, plural, Section, Verdict, type Tone } from "./poolParts";
 
 /**
@@ -11,7 +11,6 @@ import { Panel, plural, Section, Verdict, type Tone } from "./poolParts";
  */
 
 const DAY = 86_400_000;
-const WEEKS_AHEAD = 12;
 const dateOf = (ms: number) => new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 
 type Driver = NonNullable<AdminPoolView["shelf"]["reorderBecause"]["driver"]>;
@@ -30,12 +29,6 @@ export function ShelfSection({ data }: { data: AdminPoolView }) {
   const runwayText = runway === null ? null : runway >= lead * 2 ? `${lead * 2}+` : runway.toFixed(1);
   const tone: Tone = shelf.reorderNeeded ? "bad" : "good";
 
-  // Next 12 weeks: spare domains going live against domains we expect to lose, both counted from today.
-  const weeks = Array.from({ length: WEEKS_AHEAD + 1 }, (_, w) => w);
-  const goingLive = weeks.map((w) => rows.filter((r) => r.daysRemaining <= w * 7).length);
-  const expectedLost = weeks.map((w) => Number((ewma * w).toFixed(1)));
-  const labels = weeks.map((w) => (w === 0 ? "Today" : dateOf(now + w * 7 * DAY)));
-  const gapWeek = weeks.find((w) => w > 0 && expectedLost[w] > goingLive[w]);
   // A domain bought today sends nothing for its quiet days, then small warmup amounts, then full volume.
   const warmsIfBoughtToday = dateOf(now + t.agingDays * DAY);
   const readyIfBoughtToday = dateOf(now + lifeDays * DAY);
@@ -131,50 +124,6 @@ export function ShelfSection({ data }: { data: AdminPoolView }) {
         </div>
       </Panel>
 
-      <div className="pg-row wide-l">
-        <Panel
-          title="Next 12 weeks"
-          hint="spares going live against domains expected to burn"
-          read={
-            ewma === 0 ? (
-              "Nothing is burning, so every spare that goes live is capacity gained."
-            ) : gapWeek !== undefined ? (
-              <>
-                The two lines cross around <b>{labels[gapWeek]}</b>. After that more domains have burned than spares have gone live, and the pool starts shrinking.
-              </>
-            ) : (
-              <>Spares go live faster than domains burn for the whole of the next {WEEKS_AHEAD} weeks.</>
-            )
-          }
-        >
-          <LineChart
-            labels={labels}
-            endLabels
-            series={[
-              { key: "live", label: "Gone live", color: TONE.good, values: goingLive, area: true, step: true },
-              { key: "lost", label: "Burned", color: TONE.bad, values: expectedLost },
-            ]}
-            marks={lead <= WEEKS_AHEAD ? [{ index: lead, label: "bought today, live here", color: TONE.gold }] : []}
-            counts
-            format={(v) => (Number.isInteger(v) ? n0(v) : v.toFixed(1))}
-            empty="No spare domains and nothing burning."
-          />
-          <Legend
-            items={[
-              { label: "Spares gone live, total", color: TONE.good },
-              { label: "Expected to burn, total", color: TONE.bad },
-              { label: "A domain bought today goes live", color: TONE.gold, dashed: true },
-            ]}
-          />
-          <p className="pg-note">
-            {ewma === 0
-              ? "No domain has burned yet, so none are expected to. Every spare that goes live adds capacity."
-              : gapWeek !== undefined
-                ? `Around ${labels[gapWeek]}, more domains will have burned (${expectedLost[gapWeek]}) than spares gone live (${goingLive[gapWeek]}). From then on the pool shrinks unless new domains are bought now.`
-                : `Spares go live faster than domains are expected to burn for the next ${WEEKS_AHEAD} weeks.`}
-          </p>
-        </Panel>
-
         <Panel title="Stages" hint="where every domain is" read={<>Every domain walks this ladder once: {t.agingDays} quiet days, then {t.warmupDays} days of growing volume, then live.</>}>
           <ol className="pg-steps">
             {stages.map((s) => (
@@ -189,7 +138,6 @@ export function ShelfSection({ data }: { data: AdminPoolView }) {
             ))}
           </ol>
         </Panel>
-      </div>
 
       <Panel
         title="Every spare domain"

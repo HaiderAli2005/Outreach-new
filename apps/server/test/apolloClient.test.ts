@@ -26,6 +26,14 @@ describe("Apollo client", () => {
     expect(calls[0].body).toMatchObject({ person_titles: ["Head of Marketing"], page: 1, per_page: 25 });
   });
 
+  it("says the lead credits ran out instead of a bare HTTP 422, and reads other refusals in the provider's own words", async () => {
+    const refusal = (body: unknown) => vi.fn(async () => new Response(JSON.stringify(body), { status: 422, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", refusal({ error: "You have insufficient credits! <a href='x'>Upgrade your plan</a>", error_details: { code: "BILLING.LIMIT.CREDITS_EXHAUSTED", message: "Your team has used all of its credits for this billing cycle." } }));
+    await expect(new ApolloClient("key").bulkEnrich([{ id: "p1" }])).rejects.toMatchObject({ status: 402, message: expect.stringMatching(/used all of its credits/) });
+    vi.stubGlobal("fetch", refusal({ error: "Invalid <b>person_locations</b> value" }));
+    await expect(new ApolloClient("key").searchPeople({}, 1, 25)).rejects.toMatchObject({ status: 422, message: "Invalid person_locations value" });
+  });
+
   it("still reads a total nested under pagination", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ pagination: { total_entries: 12 } }), { status: 200, headers: { "content-type": "application/json" } })));
     expect(await new ApolloClient("key").countOrganizations({})).toBe(12);

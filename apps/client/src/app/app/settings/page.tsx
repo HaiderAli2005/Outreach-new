@@ -33,17 +33,40 @@ import { ago, dateLong, n0, titleCase } from "@/lib/format";
 import type { LaunchMode, OrgSettings, Provider, SettingsView, VocabItem } from "@/lib/types";
 import Link from "next/link";
 
+/** The languages emails can be written in (the server's list in domain/languages.ts). */
+const EMAIL_LANGUAGES: [string, string][] = [
+  ["en", "English"], ["de", "German"], ["fr", "French"], ["es", "Spanish"], ["it", "Italian"], ["nl", "Dutch"], ["pt", "Portuguese"],
+  ["sv", "Swedish"], ["da", "Danish"], ["no", "Norwegian"], ["fi", "Finnish"], ["pl", "Polish"], ["cs", "Czech"], ["tr", "Turkish"],
+  ["ru", "Russian"], ["ar", "Arabic"], ["he", "Hebrew"], ["ja", "Japanese"], ["zh", "Chinese (Simplified)"], ["ko", "Korean"],
+];
+
 
 type Patch = Partial<OrgSettings>;
 
+/**
+ * Settings, grouped by the question a user has in mind: what gets sent, what happens with replies, what is printed
+ * under every email, who is in the workspace, which tools are connected, and the workspace itself. Each tab opens
+ * with one sentence saying what it holds; rarely used controls sit under "Advanced" so the first screen stays short.
+ * The keys stay the same so old links (?tab=autopilot, ?tab=brand) keep working.
+ */
 const TABS = [
-  ["autopilot", "Autopilot"],
-  ["replies", "Replies"],
-  ["integrations", "Integrations"],
-  ["brand", "Company and brand"],
-  ["team", "Team"],
-  ["workspace", "Workspace"],
+  ["autopilot", "Sending", "Who gets emailed, how you approve it, and the pace.", "plane", "Outreach"],
+  ["replies", "Replies", "What happens when someone writes back.", "inbox", "Outreach"],
+  ["brand", "Email details", "Your company details and the line under every email.", "st-mail", "Outreach"],
+  ["team", "Team", "Who can use this workspace and what they can change.", "users", "Workspace"],
+  ["integrations", "Integrations", "The tools Aperture uses to find and check people.", "link", "Workspace"],
+  ["workspace", "Workspace", "This workspace's name, and deleting it.", "building", "Workspace"],
 ] as const;
+const GROUPS = ["Outreach", "Workspace"] as const;
+
+function Advanced({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <details className="set-adv">
+      <summary>{title}</summary>
+      <div className="stack">{children}</div>
+    </details>
+  );
+}
 
 function useDraft(view: SettingsView | undefined) {
   const [draft, setDraft] = useState<Patch>({});
@@ -114,7 +137,7 @@ function Autopilot({ view, canManage }: { view: SettingsView; canManage: boolean
       {ap ? (
         <div className="panel glass">
           <h3>
-            Readiness<small>{ap.ready ? "everything needed is in place" : "some pieces are missing"}</small>
+            Status<small>{ap.ready ? "ready to send" : "something below needs setting up"}</small>
           </h3>
           <ul className="checks" style={{ marginTop: 14 }}>
             {ap.readiness.map((r) => (
@@ -130,16 +153,12 @@ function Autopilot({ view, canManage }: { view: SettingsView; canManage: boolean
           </ul>
           <div className="kvgrid" style={{ marginTop: 16 }}>
             <div>
-              <small>Emails a day</small>
+              <small>Emails a day, at most</small>
               <b>{n0(ap.sending.dailyTarget)}</b>
             </div>
             <div>
-              <small>CSV leads waiting</small>
+              <small>Uploaded people waiting</small>
               <b>{n0(ap.sending.csvQueued)}</b>
-            </div>
-            <div>
-              <small>Lead credits today</small>
-              <b>{ap.sourcing.pacing.unlimited ? "no cap" : `${n0(ap.sourcing.pacing.allowanceToday ?? 0)} left`}</b>
             </div>
           </div>
         </div>
@@ -147,10 +166,10 @@ function Autopilot({ view, canManage }: { view: SettingsView; canManage: boolean
       <fieldset disabled={!canManage} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 14 }}>
         <div className="panel glass">
           <h3>
-            Launch<small>{s.firstBatchApprovedAt ? `first batch approved ${dateLong(s.firstBatchApprovedAt)}` : "nothing sends until you approve"}</small>
+            Approval<small>{s.firstBatchApprovedAt ? `first batch approved ${dateLong(s.firstBatchApprovedAt)}` : "nothing sends until you approve"}</small>
           </h3>
           <div style={{ marginTop: 14 }}>
-            <Seg<LaunchMode> label="Launch mode" value={s.launchMode} onChange={(v) => set({ launchMode: v })} options={LAUNCH_MODES.map((x) => ({ value: x.value, label: x.label }))} disabled={!canManage} />
+            <Seg<LaunchMode> label="Before the first emails go out" value={s.launchMode} onChange={(v) => set({ launchMode: v })} options={LAUNCH_MODES.map((x) => ({ value: x.value, label: x.label }))} disabled={!canManage} />
             <p className="fine" style={{ marginTop: 8 }}>{LAUNCH_MODES.find((x) => x.value === s.launchMode)?.desc}</p>
             {!view.consentOnRecord ? <p className="fine" style={{ marginTop: 4 }}>Automatic launch needs your sending confirmation on record first. You give it when you approve your first batch.</p> : null}
             {!s.firstBatchApprovedAt && s.launchMode !== "AUTO" ? (
@@ -159,21 +178,28 @@ function Autopilot({ view, canManage }: { view: SettingsView; canManage: boolean
               </Link>
             ) : null}
           </div>
+          <SettingRow title="Approve new people automatically" desc="After the first batch, people Aperture finds are emailed without waiting for you. Lists you upload never need approving.">
+            <Switch label="Approve new people automatically" checked={s.autoApproveBatches} onChange={(v) => set({ autoApproveBatches: v })} disabled={!canManage} />
+          </SettingRow>
         </div>
         <div className="panel glass">
-          <h3>Outreach</h3>
-          <SettingRow title="Find new people automatically" desc="Aperture searches for new prospects every day. Turn this off to only email the people already on your list, including anyone you upload.">
-            <Switch label="Find new people automatically" checked={s.leadSourcing === "AUTOMATIC"} onChange={(v) => set({ leadSourcing: v ? "AUTOMATIC" : "OFF" })} disabled={!canManage} />
-          </SettingRow>
-          <SettingRow title="Autopilot" desc="Find, write and send every working day without you doing anything.">
+          <h3>
+            Finding people<small>where new prospects come from</small>
+          </h3>
+          <SettingRow title="Run every working day" desc="Aperture finds, writes and sends each working day on its own. Off: nothing new starts until you turn it back on.">
             <Switch label="Autopilot" checked={s.autopilotEnabled} onChange={(v) => set({ autopilotEnabled: v })} disabled={!canManage} />
           </SettingRow>
-          <SettingRow title="Weekly review" desc="Gather each week's leads into a list you approve before it sends.">
+          <SettingRow title="Find new people automatically" desc="Searches for new prospects that match your audience. Off: only the people already on your list are emailed, including anyone you upload.">
+            <Switch label="Find new people automatically" checked={s.leadSourcing === "AUTOMATIC"} onChange={(v) => set({ leadSourcing: v ? "AUTOMATIC" : "OFF" })} disabled={!canManage} />
+          </SettingRow>
+          <SettingRow title="Weekly review" desc="Collects each week's new people into one list for you to approve, instead of a few every day.">
             <Switch label="Weekly review" checked={s.weeklyBatchMode} onChange={(v) => set({ weeklyBatchMode: v })} disabled={!canManage} />
           </SettingRow>
-          <SettingRow title="Approve weeks automatically" desc="People we find are emailed without you approving them. Uploaded lists never need approving.">
-            <Switch label="Approve automatically" checked={s.autoApproveBatches} onChange={(v) => set({ autoApproveBatches: v })} disabled={!canManage} />
-          </SettingRow>
+        </div>
+        <div className="panel glass">
+          <h3>
+            Email quality<small>what is checked before anything sends</small>
+          </h3>
           <SettingRow title="Personalize every email" desc="Write each first email from the prospect's own details.">
             <Switch label="Personalize" checked={s.personalizationEnabled} onChange={(v) => set({ personalizationEnabled: v })} disabled={!canManage} />
           </SettingRow>
@@ -182,10 +208,18 @@ function Autopilot({ view, canManage }: { view: SettingsView; canManage: boolean
           </SettingRow>
         </div>
         <div className="panel glass">
-          <h3>Timing</h3>
+          <h3>
+            Pace and language<small>the rest of the sending rules</small>
+          </h3>
           <p className="muted" style={{ margin: "6px 0 0", fontSize: 13.5 }}>
             How much goes out each day is set by your daily budget on the <Link href="/app">dashboard</Link>. Send days and hours are under <Link href="/app/setup/schedule">Sending schedule</Link>.
           </p>
+          <SettingRow
+            title="Write to each prospect in their own language"
+            desc="Each email is written in the main language of the prospect's company website (a German site gets German), else their country's. Off: everyone gets your email language."
+          >
+            <Switch label="Write to each prospect in their own language" checked={s.matchProspectLanguage !== false} onChange={(v) => set({ matchProspectLanguage: v })} disabled={!canManage} />
+          </SettingRow>
           <div className="grid2" style={{ marginTop: 14, alignItems: "start" }}>
             <Num label="Contacts per company" min={1} max={10} value={s.perCompanyContactCap} onChange={(n) => set({ perCompanyContactCap: n })} />
             <Num label="Days before a non-responder is retired" min={3} max={60} value={s.blocklistNoReplyDays} onChange={(n) => set({ blocklistNoReplyDays: n })} />
@@ -198,18 +232,9 @@ function Autopilot({ view, canManage }: { view: SettingsView; canManage: boolean
                 ))}
               </Select>
             </Field>
-            <Field label="Email language" htmlFor="lang">
-              <Select id="lang" className="input" value={s.language} onChange={(e) => set({ language: e.target.value })}>
-                {[
-                  ["en", "English"],
-                  ["sv", "Swedish"],
-                  ["de", "German"],
-                  ["fr", "French"],
-                  ["es", "Spanish"],
-                  ["nl", "Dutch"],
-                  ["da", "Danish"],
-                  ["no", "Norwegian"],
-                ].map(([k, l]) => (
+            <Field label={s.matchProspectLanguage !== false ? "Default email language" : "Email language"} htmlFor="lang" hint={s.matchProspectLanguage !== false ? "Used when a prospect's own language can't be told." : undefined}>
+              <Select id="lang" className="input" value={s.language} onChange={(e) => set({ language: e.target.value })} disabled={!canManage}>
+                {EMAIL_LANGUAGES.map(([k, l]) => (
                   <option key={k} value={k}>
                     {l}
                   </option>
@@ -218,9 +243,10 @@ function Autopilot({ view, canManage }: { view: SettingsView; canManage: boolean
             </Field>
           </div>
         </div>
+        <Advanced title="Advanced: limits on lead search credits">
         <div className="panel glass">
           <h3>
-            Lead search usage<small>{usage?.pacing.unlimited ? "no monthly cap" : usage ? `${n0(usage.pacing.spentCycle)} used this cycle` : ""}</small>
+            Lead search credits<small>{usage?.pacing.unlimited ? "no monthly cap" : usage ? `${n0(usage.pacing.spentCycle)} used this cycle` : ""}</small>
           </h3>
           <div className="grid3" style={{ marginTop: 14 }}>
             <Num label="Monthly credit cap" min={0} max={10_000_000} value={s.monthlyCreditCap} onChange={(n) => set({ monthlyCreditCap: n })} hint="0 means no cap" />
@@ -229,6 +255,7 @@ function Autopilot({ view, canManage }: { view: SettingsView; canManage: boolean
           </div>
           <p className="fine" style={{ marginTop: 10 }}>Limits on your lead search account&apos;s own credits. These are separate from your Aperture balance, which pays only for emails sent.</p>
         </div>
+        </Advanced>
       </fieldset>
       <SaveBar changed={changed} reset={reset} />
     </>
@@ -236,9 +263,9 @@ function Autopilot({ view, canManage }: { view: SettingsView; canManage: boolean
 }
 
 const LAUNCH_MODES: { value: LaunchMode; label: string; desc: string }[] = [
-  { value: "APPROVE_FIRST_BATCH", label: "Approve the first 20", desc: "You see your first 20 people and every email they would get, and approve them before anything sends. After that, you approve the people we find, unless Approve weeks automatically is on." },
+  { value: "APPROVE_FIRST_BATCH", label: "Approve the first 20", desc: "You see your first 20 people and every email they would get, and approve them before anything sends. After that, you approve the people we find, unless Approve new people automatically is on." },
   { value: "APPROVE_EACH", label: "Approve every person", desc: "Nobody is emailed until you approve them and their emails." },
-  { value: "AUTO", label: "Automatic", desc: "No first-20 step. People we find still wait for your approval unless Approve weeks automatically is on. Your sending confirmation must be on record." },
+  { value: "AUTO", label: "Automatic", desc: "No first-20 step. People we find still wait for your approval unless Approve new people automatically is on. Your sending confirmation must be on record." },
 ];
 
 
@@ -331,7 +358,9 @@ function StatusVocab({ canManage }: { canManage: boolean }) {
 
 function Replies({ view, canManage }: { view: SettingsView; canManage: boolean }) {
   const { s, set, changed, reset } = useDraft(view);
+  const toast = useToast();
   if (!s) return null;
+  const perm = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
   return (
     <>
       {!view.aiAvailable ? (
@@ -350,7 +379,28 @@ function Replies({ view, canManage }: { view: SettingsView; canManage: boolean }
           </p>
         </div>
       </fieldset>
-      <StatusVocab canManage={canManage} />
+      <div className="panel glass">
+        <h3>
+          Notifications<small>this browser only</small>
+        </h3>
+        <SettingRow title="Tell me when a reply arrives" desc={perm === "denied" ? "Blocked in this browser. Allow notifications for this site in your browser settings." : "A desktop notice for each new reply while Aperture is open."}>
+          <Switch
+            label="Browser notifications"
+            checked={s.browserNotifications}
+            disabled={!canManage || perm === "unsupported"}
+            onChange={async (v) => {
+              if (v && perm === "default") {
+                const r = await Notification.requestPermission();
+                if (r !== "granted") return toast("Notifications weren't allowed in this browser", "bad");
+              }
+              set({ browserNotifications: v });
+            }}
+          />
+        </SettingRow>
+      </div>
+      <Advanced title="Advanced: rename or recolour reply labels">
+        <StatusVocab canManage={canManage} />
+      </Advanced>
       <SaveBar changed={changed} reset={reset} />
     </>
   );
@@ -360,6 +410,7 @@ function Replies({ view, canManage }: { view: SettingsView; canManage: boolean }
 const PROVIDERS: { key: Provider; name: string; desc: string; placeholder: string }[] = [
   { key: "APOLLO", name: "Apollo", desc: "Finds and enriches leads that match your campaigns.", placeholder: "Apollo API key" },
   { key: "MILLIONVERIFIER", name: "MillionVerifier", desc: "Checks every address before it is emailed.", placeholder: "MillionVerifier API key" },
+  { key: "GOOGLE_PLACES", name: "Google Maps", desc: "Finds local businesses (clinics, firms, shops) for campaigns that search Google Maps. A Google Cloud key with the Places API (New) on.", placeholder: "Google Maps Platform API key" },
   { key: "SLACK_WEBHOOK", name: "Slack", desc: "Posts new replies and weekly lists to a channel.", placeholder: "https://hooks.slack.com/services/…" },
 ];
 
@@ -374,9 +425,12 @@ function CredentialRow({ p, status, canManage }: { p: (typeof PROVIDERS)[number]
       <div className="t">
         <b>
           {p.name}{" "}
-          {status?.source === "organization" ? <Chip tone="g">Connected</Chip> : status?.source === "platform" ? <Chip tone="b">Using platform key</Chip> : <Chip tone="y">Not connected</Chip>}
+          {status?.source === "organization" ? <Chip tone="g">Your own key</Chip> : status?.source === "platform" ? <Chip tone="g">Included</Chip> : <Chip tone="y">Not connected</Chip>}
         </b>
-        <small>{p.desc}</small>
+        <small>
+          {p.desc}
+          {status?.source === "platform" ? " Already works through Aperture's account; nothing to do." : ""}
+        </small>
         {status?.masked && status.source === "organization" ? <small className="mono">{status.masked}</small> : null}
         {editing ? (
           <div className="toolbar" style={{ marginTop: 10 }}>
@@ -408,7 +462,7 @@ function CredentialRow({ p, status, canManage }: { p: (typeof PROVIDERS)[number]
       {canManage && !editing ? (
         <div style={{ display: "flex", gap: 6 }}>
           <Button size="sm" onClick={() => setEditing(true)}>
-            {status?.source === "organization" ? "Replace" : "Connect"}
+            {status?.source === "organization" ? "Replace key" : status?.source === "platform" ? "Use my own key" : "Connect"}
           </Button>
           {status?.source === "organization" ? (
             <Button size="sm" variant="text" loading={removeState.isLoading} onClick={() => remove(p.key).unwrap().then(() => toast(`${p.name} disconnected`, "good")).catch((e) => toast(errorMessage(e), "bad"))}>
@@ -436,7 +490,7 @@ function Integrations({ view, canManage }: { view: SettingsView; canManage: bool
     <>
       <div className="panel glass">
         <h3>
-          Connections<small>keys are encrypted at rest</small>
+          Connected tools<small>keys are encrypted at rest</small>
         </h3>
         <div style={{ marginTop: 8 }}>
           {PROVIDERS.map((p) => (
@@ -444,7 +498,9 @@ function Integrations({ view, canManage }: { view: SettingsView; canManage: bool
           ))}
         </div>
       </div>
-      {canManage && hooks.length ? (
+      {canManage ? (
+        <Advanced title="Advanced: webhook addresses and a live address check">
+      {hooks.length ? (
         <div className="panel glass">
           <h3>
             Webhook addresses<small>paste these into each tool, keep them private</small>
@@ -466,7 +522,6 @@ function Integrations({ view, canManage }: { view: SettingsView; canManage: bool
           </div>
         </div>
       ) : null}
-      {canManage ? (
         <div className="panel glass">
           <h3>Test an address</h3>
           <p style={{ marginTop: 6 }}>Runs one live check with your email verifier.</p>
@@ -491,6 +546,7 @@ function Integrations({ view, canManage }: { view: SettingsView; canManage: bool
             </div>
           ) : null}
         </div>
+        </Advanced>
       ) : null}
     </>
   );
@@ -498,14 +554,14 @@ function Integrations({ view, canManage }: { view: SettingsView; canManage: bool
 
 function Brand({ view, canManage }: { view: SettingsView; canManage: boolean }) {
   const { s, set, changed, reset } = useDraft(view);
-  const toast = useToast();
   if (!s) return null;
-  const perm = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
   return (
     <>
       <fieldset disabled={!canManage} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 14 }}>
         <div className="panel glass">
-          <h3>Your company</h3>
+          <h3>
+            Company details<small>used in replies and the footer</small>
+          </h3>
           <p className="muted" style={{ margin: "6px 0 0", fontSize: 13.5 }}>Emails are signed by the mailbox they go out from, so the name always matches the address.</p>
           <div className="grid2" style={{ marginTop: 14, alignItems: "start" }}>
             <TextField label="Company" hint="Used in replies and the email footer" value={s.senderCompany ?? ""} maxLength={160} onChange={(e) => set({ senderCompany: e.target.value || null })} />
@@ -516,7 +572,9 @@ function Brand({ view, canManage }: { view: SettingsView; canManage: boolean }) 
           </div>
         </div>
         <div className="panel glass">
-          <h3>Your emails</h3>
+          <h3>
+            Under every email<small>the opt-out line</small>
+          </h3>
           <div className="stack" style={{ marginTop: 14 }}>
             <TextField label="Opt-out line" hint="Added under the sign-off of every email" value={s.optOutLine ?? ""} maxLength={300} onChange={(e) => set({ optOutLine: e.target.value || null })} />
             <p className="fine" style={{ margin: 0 }}>
@@ -525,36 +583,16 @@ function Brand({ view, canManage }: { view: SettingsView; canManage: boolean }) 
           </div>
         </div>
       </fieldset>
-      <div className="panel glass">
-        <h3>Notifications</h3>
-        <SettingRow title="Browser notifications" desc={perm === "denied" ? "Blocked in this browser. Allow notifications for this site in your browser settings." : "Get a desktop notice when a new reply arrives while the app is open."}>
-          <Switch
-            label="Browser notifications"
-            checked={s.browserNotifications}
-            disabled={!canManage || perm === "unsupported"}
-            onChange={async (v) => {
-              if (v && perm === "default") {
-                const r = await Notification.requestPermission();
-                if (r !== "granted") return toast("Notifications weren't allowed in this browser", "bad");
-              }
-              set({ browserNotifications: v });
-            }}
-          />
-        </SettingRow>
-      </div>
       <SaveBar changed={changed} reset={reset} />
     </>
   );
 }
 
 function Team({ canManage }: { canManage: boolean }) {
-  const { data: org } = useOrganizationQuery();
   const { data: members, isLoading, isError, error, refetch } = useMembersQuery();
-  const [updateOrg, orgState] = useUpdateOrganizationMutation();
   const [invite, inviteState] = useInviteMutation();
   const [changeRole] = useChangeRoleMutation();
   const [remove, removeState] = useRemoveMemberMutation();
-  const [name, setName] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("MEMBER");
@@ -565,37 +603,6 @@ function Team({ canManage }: { canManage: boolean }) {
 
   return (
     <>
-      <div className="panel glass">
-        <h3>Organization</h3>
-        <div className="toolbar" style={{ marginTop: 14, alignItems: "flex-end" }}>
-          <div className="grow">
-            <TextField label="Name" value={name ?? org?.name ?? ""} disabled={!canManage} maxLength={120} onChange={(e) => setName(e.target.value)} />
-          </div>
-          {canManage && name !== null && name.trim() && name !== org?.name ? (
-            <Button
-              variant="primary"
-              size="sm"
-              loading={orgState.isLoading}
-              onClick={() =>
-                updateOrg({ name: name.trim() })
-                  .unwrap()
-                  .then(() => {
-                    setName(null);
-                    toast("Organization renamed", "good");
-                  })
-                  .catch((e) => toast(errorMessage(e), "bad"))
-              }
-            >
-              Save
-            </Button>
-          ) : null}
-        </div>
-        {org ? (
-          <p className="fine" style={{ marginTop: 10 }}>
-            Main domain {org.primaryDomain ?? "not set"} · created {dateLong(org.createdAt)}
-          </p>
-        ) : null}
-      </div>
       <div className="tbl-wrap glass">
         <div className="toolbar" style={{ padding: "16px 18px" }}>
           <b style={{ font: "600 17px var(--f-display)" }}>Members</b>
@@ -755,7 +762,10 @@ function Team({ canManage }: { canManage: boolean }) {
  * or website, and frees a place under the five-workspace limit.
  */
 function WorkspaceTab() {
-  const { role } = useRole();
+  const { role, canManage } = useRole();
+  const { data: details } = useOrganizationQuery();
+  const [updateOrg, orgState] = useUpdateOrganizationMutation();
+  const [name, setName] = useState<string | null>(null);
   const { organizations, activeOrgId } = useAppSelector((s) => s.auth);
   const org = organizations.find((o) => o.id === activeOrgId) ?? null;
   const [open, setOpen] = useState(false);
@@ -773,16 +783,42 @@ function WorkspaceTab() {
   return (
     <>
       <div className="panel glass">
-        <h3>{label}</h3>
-        <p className="muted" style={{ marginTop: 6 }}>
-          You have {organizations.length} of 5 workspaces. Each website is its own workspace, with its own campaign, balance and settings.
+        <h3>
+          About this workspace<small>{organizations.length} of 5 workspaces used</small>
+        </h3>
+        <div className="toolbar" style={{ marginTop: 14, alignItems: "flex-end" }}>
+          <div className="grow">
+            <TextField label="Workspace name" value={name ?? details?.name ?? org.name} disabled={!canManage} maxLength={120} onChange={(e) => setName(e.target.value)} />
+          </div>
+          {canManage && name !== null && name.trim() && name !== (details?.name ?? org.name) ? (
+            <Button
+              variant="primary"
+              size="sm"
+              loading={orgState.isLoading}
+              onClick={() =>
+                updateOrg({ name: name.trim() })
+                  .unwrap()
+                  .then(() => {
+                    setName(null);
+                    toast("Workspace renamed", "good");
+                  })
+                  .catch((e) => toast(errorMessage(e), "bad"))
+              }
+            >
+              Save
+            </Button>
+          ) : null}
+        </div>
+        <p className="fine" style={{ marginTop: 10 }}>
+          Website {details?.primaryDomain ?? org.primaryDomain ?? "not set"}
+          {details ? ` · created ${dateLong(details.createdAt)}` : ""}. Each website is its own workspace, with its own campaign, balance and settings. Switch between them from the menu at the top left.
         </p>
       </div>
       <div className="panel glass danger-zone">
         <div>
           <h3>Delete this workspace</h3>
           <p className="muted" style={{ marginTop: 6 }}>
-            Sending stops, its saved card is removed and it disappears for everyone in it. Its balance goes with it. Payment records are kept. This can&apos;t be undone.
+            Sending stops at once, the saved card is removed, and the workspace disappears for everyone in it. Any credit left in it is lost. Payment records are kept. This can&apos;t be undone.
           </p>
           {role !== "OWNER" ? <p className="muted" style={{ marginTop: 6 }}>Only an owner can delete a workspace.</p> : null}
         </div>
@@ -822,7 +858,7 @@ function WorkspaceTab() {
             </>
           }
         >
-          <p style={{ margin: 0 }}>Sending stops, its saved card is removed and its balance goes with it. This can&apos;t be undone.</p>
+          <p style={{ margin: 0 }}>Sending stops at once, the saved card is removed, and any credit left in this workspace is lost. This can&apos;t be undone.</p>
           <label className="au-field" htmlFor="delConfirm" style={{ display: "grid", gap: 6, marginTop: 14 }}>
             <span className="muted" style={{ fontSize: 13 }}>
               Type <b>{label}</b> to confirm
@@ -849,17 +885,38 @@ function Settings() {
   const { data: view, isLoading, isError, error, refetch } = useSettingsQuery();
   const [key, setKey] = useState(0);
   useEffect(() => setKey((k) => k + 1), [tab]);
+  const cur = TABS.find(([k]) => k === tab) ?? TABS[0];
 
   return (
     <>
       <ViewHead kicker="Settings" title="How Aperture works for you." sub={canManage ? undefined : "You can view these settings. Owners and admins can change them."} />
-      <div className="tabs" role="tablist">
-        {TABS.map(([k, l]) => (
-          <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => router.replace(`${path}?tab=${k}`, { scroll: false })}>
-            {l}
-          </button>
-        ))}
-      </div>
+      {/* A side menu, not a row of pills: six sections read as a list you scan down, and the open one stays in view. */}
+      <div className="set-layout">
+        <nav className="set-nav" role="tablist" aria-orientation="vertical" aria-label="Settings">
+          {GROUPS.map((g) => (
+            <div key={g} className="set-nav-g">
+              <div className="set-nav-h">{g}</div>
+              {TABS.filter((t) => t[4] === g).map(([k, l, , icon]) => (
+                <button key={k} type="button" role="tab" aria-selected={cur[0] === k} onClick={() => router.replace(`${path}?tab=${k}`, { scroll: false })}>
+                  <span className="set-ic">
+                    <Icon id={icon} />
+                  </span>
+                  {l}
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="set-pane">
+          <div className="set-pane-h">
+            <span className="set-ic lg">
+              <Icon id={cur[3]} />
+            </span>
+            <div>
+              <h2>{cur[1]}</h2>
+              <p>{cur[2]}</p>
+            </div>
+          </div>
       {isError ? (
         <ErrorState error={error} onRetry={refetch} />
       ) : isLoading || !view ? (
@@ -881,6 +938,8 @@ function Settings() {
           )}
         </div>
       )}
+        </div>
+      </div>
     </>
   );
 }

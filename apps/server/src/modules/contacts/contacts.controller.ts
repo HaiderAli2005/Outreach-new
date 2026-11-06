@@ -98,6 +98,11 @@ export async function dailyExport(req: Request, res: Response) {
 }
 
 /** The customer marks a person done: their sequence stops for good. */
+export async function leaveOut(req: Request, res: Response) {
+  const { id } = parseParams(req, z.object({ id: z.string().min(1) }));
+  return ok(res, await service.leaveOut(ctx(req).orgId, id));
+}
+
 export async function stopSequence(req: Request, res: Response) {
   const { id } = parseParams(req, z.object({ id: z.string().min(1) }));
   return ok(res, await service.markDone(ctx(req).orgId, id));

@@ -4,13 +4,16 @@ import { dateKeyInTz, dateOnly, dayKeyOf, dayOfWeekInTz, mondayOf, nextMondayOf 
 import { hmac, safeEqual } from "../lib/crypto.js";
 import { env } from "../config/env.js";
 import { SEND_FLOOR } from "./scoring.js";
-import { getSettings } from "./settings.js";
+import { autoApproves, getSettings, weeksApprovable } from "./settings.js";
 import { approval } from "./approval.js";
+import { reviewsWeekly } from "./supply.js";
 
 export interface BatchStats {
   total: number;
   excluded: number;
   sendable: number;
+  /** Of the sendable, those whose emails are already written. The rest are still being checked and written. */
+  written: number;
   belowFloor: number;
   tierA: number;
   tierB: number;
@@ -23,10 +26,11 @@ const PENDING_STATUSES = ["NEW", "PERSONALIZED", "QUEUED"] as const;
 
 export async function batchStats(orgId: string, batchId: string): Promise<BatchStats> {
   const base = { organizationId: orgId, batchId };
-  const [total, excluded, sendable, belowFloor, tierA, tierB, pushed, avg, byCampaign] = await Promise.all([
+  const [total, excluded, sendable, written, belowFloor, tierA, tierB, pushed, avg, byCampaign] = await Promise.all([
     prisma.contact.count({ where: base }),
     prisma.contact.count({ where: { ...base, status: "REJECTED" } }),
     prisma.contact.count({ where: { ...base, status: { in: [...PENDING_STATUSES] }, fitScore: { gte: SEND_FLOOR } } }),
+    prisma.contact.count({ where: { ...base, status: { in: ["PERSONALIZED", "QUEUED"] }, fitScore: { gte: SEND_FLOOR } } }),
     prisma.contact.count({ where: { ...base, status: { in: [...PENDING_STATUSES] }, fitScore: { lt: SEND_FLOOR } } }),
     prisma.contact.count({ where: { ...base, tier: "A" } }),
     prisma.contact.count({ where: { ...base, tier: "B" } }),
@@ -42,6 +46,7 @@ export async function batchStats(orgId: string, batchId: string): Promise<BatchS
     total,
     excluded,
     sendable,
+    written,
     belowFloor,
     tierA,
     tierB,
@@ -81,6 +86,7 @@ export async function approveBatch(orgId: string, batchId: string, excludeContac
   const batch = await prisma.weeklyBatch.findFirst({ where: { id: batchId, organizationId: orgId } });
   if (!batch) return { ok: false, error: "That week's list can't be found anymore." };
   if (["APPROVED", "SENDING", "DONE"].includes(batch.status)) return { ok: false, error: "This week was already approved, nothing more to do." };
+  if (!weeksApprovable(await getSettings(orgId))) return { ok: false, error: "Approve your first people on the Launch page first. Weekly lists open after that." };
   if (excludeContactIds.length) await excludeLeads(orgId, batchId, excludeContactIds);
   const stats = await batchStats(orgId, batchId);
   const now = new Date();
@@ -99,7 +105,7 @@ export async function approveBatch(orgId: string, batchId: string, excludeContac
 export async function handoffToReview(orgId: string, batchId: string): Promise<void> {
   await prisma.weeklyBatch.updateMany({ where: { id: batchId, organizationId: orgId, status: "SOURCING" }, data: { status: "REVIEW" } });
   const settings = await getSettings(orgId);
-  if (settings.autoApproveBatches) await approveBatch(orgId, batchId, [], "auto");
+  if (autoApproves(settings)) await approveBatch(orgId, batchId, [], "auto");
 }
 
 export function pendingReviewBatches(orgId: string) {
@@ -120,7 +126,7 @@ export async function closePastBatches(orgId: string, dayKey: string): Promise<v
 
 export async function resolveImportBatch(orgId: string): Promise<WeeklyBatch | null> {
   const s = await getSettings(orgId);
-  if (!s.weeklyBatchMode) return null;
+  if (!reviewsWeekly(s)) return null;
   const dayKey = dateKeyInTz(s.timezone);
   const weekly = Math.max(1, s.dailySourceTarget) * 5;
   const open = (b: WeeklyBatch | null) => (b && ["SOURCING", "REVIEW"].includes(b.status) ? b : null);

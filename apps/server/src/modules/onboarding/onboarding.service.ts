@@ -4,7 +4,7 @@ import { prisma } from "../../lib/prisma.js";
 import { badRequest, conflict, notFound, unprocessable, upstream } from "../../lib/errors.js";
 import { brandFromDomain, extractDomain, isValidDomain } from "../../lib/normalize.js";
 import { sha256 } from "../../lib/crypto.js";
-import { BUDGET_DEFAULT_DECICENTS, newPeoplePerDay, WARMUP_OPTIONS } from "../../config/plans.js";
+import { BUDGET_DEFAULT_DECICENTS, newPeopleBounds, WARMUP_OPTIONS } from "../../config/plans.js";
 import { emailsPerDay } from "../../domain/budget.js";
 import { PRICE_PER_EMAIL } from "../../domain/money.js";
 import { getAi, requireAi } from "../../integrations/ai.js";
@@ -20,7 +20,7 @@ import { addUsage } from "../../domain/usage.js";
 import { getSettings } from "../../domain/settings.js";
 import { cleanSubject, lintEmail } from "../../domain/personalize.js";
 import { features } from "../../config/env.js";
-import { ALLOWED_COMPANY_SIZES, ANALYSIS_SCHEMA, ANALYSIS_SYSTEM, PROMPT_VERSION, analysisUserPrompt, type PromptPage, type Signals } from "./analysisPrompt.js";
+import { ALLOWED_COMPANY_SIZES, ALLOWED_SENIORITIES, ANALYSIS_SCHEMA, ANALYSIS_SYSTEM, PROMPT_VERSION, analysisUserPrompt, type PromptPage, type Signals } from "./analysisPrompt.js";
 import { groundAnalysis, numbersIn, sourceFor } from "./grounding.js";
 import {
   KEYWORD_PROBLEM_MESSAGE,
@@ -36,10 +36,11 @@ import {
 } from "./analysisValidate.js";
 import { extractSignals } from "./signals.js";
 import { logger } from "../../lib/logger.js";
+import { mapsPlan, type LeadSource, type MapsCursor } from "../../domain/mapsSourcing.js";
 import { logSystem } from "../../domain/systemLog.js";
 import { verifierFor } from "../../integrations/verifier.js";
 import { fillSender } from "../../domain/sending/senderName.js";
-import { firstRunView, retryFirstRun as retryRun, startFirstRun } from "./firstRun.js";
+import { firstRunView, retryFirstRun as retryRun, startCampaignSearch, startFirstRun } from "./firstRun.js";
 import { env } from "../../config/env.js";
 
 export interface Icp {
@@ -89,6 +90,14 @@ export interface BuyerGroup {
   lookalikeDomains: string[];
   excludeDomains: string[];
   on: boolean;
+  /** Made by hand with "New campaign", not by the setup analysis: it may have more keywords and no job titles. */
+  custom?: boolean;
+  /** Where people are found: the lead search (default), Google Maps businesses, or both. */
+  source?: LeadSource;
+  /** Maps only: never the address a business publishes (info@...), only named people. */
+  namedOnly?: boolean;
+  /** Maps only: the cities to search instead of a country's big cities. */
+  mapsCities?: string[];
 }
 
 export interface StoredAnalysis {
@@ -173,6 +182,10 @@ export function normalizeGroup(raw: Partial<BuyerGroup>, i: number): BuyerGroup 
     lookalikeDomains: list(raw.lookalikeDomains),
     excludeDomains: list(raw.excludeDomains),
     on: raw.on !== false,
+    ...(raw.custom ? { custom: true } : {}),
+    ...(raw.source === "maps" || raw.source === "both" ? { source: raw.source } : {}),
+    ...(raw.namedOnly ? { namedOnly: true } : {}),
+    ...(Array.isArray(raw.mapsCities) && raw.mapsCities.length ? { mapsCities: list(raw.mapsCities) } : {}),
   };
 }
 
@@ -416,12 +429,17 @@ export async function update(orgId: string, patch: OnboardingPatch) {
 }
 
 export const MAX_KEYWORDS = 5;
+/** A campaign made by hand can list a market's own words in full (Apollo matches any of them). */
+export const MAX_CUSTOM_KEYWORDS = 25;
+/** Campaigns (audiences) a workspace can hold, on and off together. */
+export const MAX_AUDIENCES = 20;
 
 /** Applies a user's keyword edit to one group, using the same rules as the analysis prompt. */
 function editKeywords(o: Onboarding, g: BuyerGroup, raw: string[]): Pick<BuyerGroup, "keywords" | "keywordSuggestions"> {
   const keywords = [...new Set(raw.map(kwNorm).filter(Boolean))];
   if (!keywords.length) throw badRequest("Keep at least one keyword in this audience, or it would search every company.");
-  if (keywords.length > MAX_KEYWORDS) throw badRequest(`An audience can have up to ${MAX_KEYWORDS} keywords. Remove one first, or split this audience.`);
+  const most = g.custom ? MAX_CUSTOM_KEYWORDS : MAX_KEYWORDS;
+  if (keywords.length > most) throw badRequest(`An audience can have up to ${most} keywords. Remove one first, or split this audience.`);
   const bd = analysisOf(o)?.brandDetail;
   const seller = sellerTerms(bd?.offerings ?? [], bd?.company_name ?? o.brand, o.domain);
   for (const k of keywords) {
@@ -533,6 +551,11 @@ async function runAnalysis(orgId: string, domain: string, pages: PromptPage[], s
 export function aiErrorReason(err: unknown): string {
   const e = (err ?? {}) as { status?: number; code?: string; error?: { code?: string; type?: string }; message?: string; cause?: { code?: string } };
   const code = e.code ?? e.error?.code ?? e.error?.type ?? "";
+  if (env.AZURE_OPENAI_ENDPOINT) {
+    if (e.status === 401) return "Azure OpenAI rejected the API key. Check AZURE_OPENAI_API_KEY in apps/server/.env.";
+    if (e.status === 404 || /model_not_found|DeploymentNotFound/i.test(code)) return `No Azure deployment named "${env.OPENAI_MODEL}". The model settings in apps/server/.env must match the deployment names in Azure AI Foundry.`;
+    if (e.status === 429) return "Azure OpenAI is rate limiting this deployment. Wait a minute, or raise its tokens-per-minute limit in Azure.";
+  }
   if (e.status === 401) return "OpenAI rejected the API key. Check OPENAI_API_KEY in apps/server/.env.";
   if (e.status === 429 && /quota|billing/i.test(`${code} ${e.message ?? ""}`)) return "Your OpenAI account has no credit left. Add credit at platform.openai.com, then try again.";
   if (e.status === 429) return "OpenAI is rate limiting this key. Wait a minute and try again.";
@@ -795,7 +818,8 @@ export function companiesFrom(people: ApolloPerson[], audienceId: string): Marke
  * The people shown before payment: a few from every audience, people with an email on file first,
  * interleaved so one large audience never fills the whole list.
  */
-export function pickProspects(people: MarketPerson[], perAudience = 4, max = 12): MarketPerson[] {
+/** Every named person in the sample, audiences taken in turns and those with an email first, so the first rows show the mix. */
+export function pickProspects(people: MarketPerson[], perAudience = Infinity, max = 200): MarketPerson[] {
   const byAudience = new Map<string, MarketPerson[]>();
   for (const p of people) {
     if (!p.firstName) continue;
@@ -1149,8 +1173,8 @@ async function prepareCampaign(orgId: string, o: Awaited<ReturnType<typeof load>
     where: { organizationId: orgId },
     data: {
       dailyBudgetDecicents: budget,
-      // Each new person takes 4 emails, so the engine finds a quarter of the day's emails in new people.
-      dailySourceTarget: Math.max(1, Math.min(newPeoplePerDay(volume), 1000)),
+      // Find enough new people for the busiest day: new people fill up to half the day's emails (see dailyPlan).
+      dailySourceTarget: Math.max(1, Math.min(newPeopleBounds(volume).max, 1000)),
       // Skipping the card creates the campaign without starting it: nothing sends until a card is added.
       autopilotEnabled: start,
       senderCompany: settings.senderCompany ?? o.brand,
@@ -1242,6 +1266,7 @@ function targetingGroup(g: BuyerGroup, counts: MarketView | null, queued: Map<st
     keywordSuggestions: g.keywordSuggestions,
     sizes: g.sizes,
     regions: g.regions,
+    source: g.source ?? "apollo",
     matching: g.on ? (c?.count ?? null) : null,
     reachable: g.on ? (c?.verified ?? null) : null,
     queued: queued.get(g.id) ?? 0,
@@ -1276,7 +1301,7 @@ function applyTargeting(o: Onboarding, edits: TargetingEdit[]): BuyerGroup[] {
       regions: clampList(e.regions, 25),
     };
     if (e.keywords.join("|") !== g.keywords.join("|")) Object.assign(next, editKeywords(o, g, e.keywords));
-    if (next.on && !next.titles.length) throw badRequest(`"${g.name}" needs at least one job title.`);
+    if (next.on && !next.titles.length && !(g.custom && g.seniorities.length)) throw badRequest(`"${g.name}" needs at least one job title.`);
     return next;
   });
   if (!groups.some((g) => g.on)) throw badRequest("Keep at least one audience on, or the campaign has nobody to find.");
@@ -1306,6 +1331,134 @@ export async function targetingImpact(orgId: string, edits: TargetingEdit[]) {
   return { affected, queued: affected.reduce((n, a) => n + a.queued, 0) };
 }
 
+/** Points the campaign at the audiences that are on. Unchanged ones keep their place in the results. */
+async function pointCampaignAt(orgId: string, groups: BuyerGroup[], changed: string[]): Promise<string | null> {
+  const campaign = await prisma.campaign.findFirst({ where: { organizationId: orgId, status: { not: "ARCHIVED" } }, orderBy: { createdAt: "asc" } });
+  if (campaign) {
+    const prev = new Map(((Array.isArray(campaign.audiences) ? campaign.audiences : []) as unknown as { id: string; page: number; saturatedAt: string | null; maps?: MapsCursor }[]).map((a) => [a.id, a]));
+    const on = groups.filter((g) => g.on);
+    const audiences = on.map((g) => {
+      const p = prev.get(g.id);
+      const keep = p && !changed.includes(g.id);
+      const source = g.source ?? "apollo";
+      const entry = { id: g.id, name: g.name, filters: groupFilters(g), page: keep ? p.page : 1, saturatedAt: keep ? p.saturatedAt : null };
+      if (source === "apollo") return entry;
+      // A campaign that also searches Google Maps keeps its place in those searches while they stay the same.
+      const plan = mapsPlan(g.keywords, g.regions, g.mapsCities ?? []);
+      const same = p?.maps && JSON.stringify(p.maps.queries) === JSON.stringify(plan.queries);
+      const maps: MapsCursor = same ? { ...p.maps!, regionCode: plan.regionCode } : { ...plan, at: 0, token: null, doneAt: null };
+      return { ...entry, source, namedOnly: !!g.namedOnly, maps };
+    });
+    await prisma.campaign.update({
+      where: { id: campaign.id },
+      data: { audiences: audiences as unknown as Prisma.InputJsonValue, apolloFilters: filtersForGroups(on) as Prisma.InputJsonValue, audienceCursor: 0, saturatedAt: null, niche: on.map((g) => g.name).slice(0, 3).join(", ") || campaign.niche },
+    });
+  }
+  return campaign?.status === "ACTIVE" ? campaign.id : null;
+}
+
+/** What "New campaign" asks for: who to find, written by the customer instead of the setup analysis. */
+export interface NewAudience {
+  name: string;
+  description: string;
+  why: string;
+  titles: string[];
+  includeSimilarTitles: boolean;
+  seniorities: string[];
+  keywords: string[];
+  sizes: string[];
+  regions: string[];
+  source?: LeadSource;
+  namedOnly?: boolean;
+  mapsCities?: string[];
+}
+
+/**
+ * "New campaign": one more audience, searched on its own like the ones from setup, and switched on right away. It
+ * joins the running campaign, so it shares the daily sending and the email sequence.
+ */
+/** One campaign made by hand, checked the same way whether it comes from the form or a CSV row. Nothing is saved. */
+function customGroup(o: Onboarding, existing: BuyerGroup[], input: NewAudience, index: number): BuyerGroup {
+  const name = clip(input.name, 60);
+  if (!name) throw badRequest("Give the campaign a name.");
+  if (existing.some((g) => g.name.trim().toLowerCase() === name.toLowerCase())) throw badRequest(`You already have a campaign called "${name}".`);
+  const titles = clampList(input.titles, 25);
+  const seniorities = clampList(input.seniorities, 11, 20).filter((x) => (ALLOWED_SENIORITIES as readonly string[]).includes(x));
+  if (!titles.length && !seniorities.length) throw badRequest("Add at least one job title or pick a seniority, or the campaign would email anyone at these companies.");
+  const regions = clampList(input.regions, 25);
+  if (!regions.length) throw badRequest("Add at least one location.");
+  const sizes = clampList(input.sizes, 7, 20).filter((x) => (ALLOWED_COMPANY_SIZES as readonly string[]).includes(x));
+  const draft: BuyerGroup = {
+    ...normalizeGroup({}, existing.length),
+    id: `c${Date.now().toString(36)}${index.toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`,
+    priority: Math.max(0, ...existing.map((g) => g.priority)) + 1,
+    name,
+    description: clip(input.description, 600),
+    why: clip(input.why, 600),
+    titles,
+    includeSimilarTitles: input.includeSimilarTitles,
+    seniorities,
+    sizes,
+    regions,
+    excludeDomains: o.domain ? [normalizeDomain(o.domain)] : [],
+    custom: true,
+    ...(input.source === "maps" || input.source === "both" ? { source: input.source } : {}),
+    ...(input.namedOnly ? { namedOnly: true } : {}),
+    ...(input.mapsCities?.length ? { mapsCities: clampList(input.mapsCities, 40) } : {}),
+  };
+  return { ...draft, ...editKeywords(o, { ...draft, keywords: [] }, input.keywords) };
+}
+
+async function saveNewGroups(orgId: string, next: BuyerGroup[], before: Set<string>) {
+  await prisma.onboarding.update({
+    where: { organizationId: orgId },
+    data: { groups: next as unknown as Prisma.InputJsonValue, icp: icpFromGroups(next) as unknown as Prisma.InputJsonValue },
+  });
+  const campaignId = await pointCampaignAt(orgId, next, []);
+  // The first search for the new campaigns runs now rather than at the next round.
+  if (campaignId) startCampaignSearch(orgId, campaignId, next.filter((g) => !before.has(g.id)).map((g) => g.id));
+  // Count the new market in the background; Targeting shows the numbers once they are in.
+  void market(orgId, true).catch(() => undefined);
+}
+
+export async function createAudience(orgId: string, input: NewAudience) {
+  const o = await load(orgId);
+  const groups = groupsOf(o);
+  if (groups.length >= MAX_AUDIENCES) throw badRequest(`You can have up to ${MAX_AUDIENCES} campaigns. Remove one you no longer use first.`);
+  const group = customGroup(o, groups, input, 0);
+  await saveNewGroups(orgId, [...groups, group], new Set(groups.map((g) => g.id)));
+  return { id: group.id, name: group.name };
+}
+
+export interface ImportRowResult {
+  row: number;
+  name: string;
+  error: string | null;
+}
+
+/**
+ * Many campaigns from one CSV. Every row is checked first; if any row has a problem nothing is created, and each
+ * row says what is wrong with it. `check` only checks.
+ */
+export async function importAudiences(orgId: string, rows: NewAudience[], check: boolean) {
+  const o = await load(orgId);
+  const groups = groupsOf(o);
+  const made: BuyerGroup[] = [];
+  const results: ImportRowResult[] = rows.map((input, i) => {
+    try {
+      made.push(customGroup(o, [...groups, ...made], input, i));
+      return { row: i + 1, name: clip(input.name, 60), error: null };
+    } catch (err) {
+      return { row: i + 1, name: clip(input.name, 60), error: (err as Error).message };
+    }
+  });
+  const room = MAX_AUDIENCES - groups.length;
+  const tooMany = made.length > room ? `You have room for ${Math.max(0, room)} more ${room === 1 ? "campaign" : "campaigns"} (up to ${MAX_AUDIENCES} in all). Remove some rows or campaigns first.` : null;
+  const ok = !tooMany && results.every((r) => !r.error);
+  if (ok && !check) await saveNewGroups(orgId, [...groups, ...made], new Set(groups.map((g) => g.id)));
+  return { ok, created: ok && !check ? made.map((g) => ({ id: g.id, name: g.name })) : [], problem: tooMany, rows: results };
+}
+
 /**
  * Saves the audiences and points the campaign at them. An audience whose search is unchanged keeps its place in the
  * results; a changed one starts again from the first page. People already waiting from a changed audience stay
@@ -1320,20 +1473,7 @@ export async function saveTargeting(orgId: string, edits: TargetingEdit[], dropQ
     where: { organizationId: orgId },
     data: { groups: groups as unknown as Prisma.InputJsonValue, icp: icpFromGroups(groups) as unknown as Prisma.InputJsonValue },
   });
-  const campaign = await prisma.campaign.findFirst({ where: { organizationId: orgId, status: { not: "ARCHIVED" } }, orderBy: { createdAt: "asc" } });
-  if (campaign) {
-    const prev = new Map(((Array.isArray(campaign.audiences) ? campaign.audiences : []) as unknown as { id: string; page: number; saturatedAt: string | null }[]).map((a) => [a.id, a]));
-    const on = groups.filter((g) => g.on);
-    const audiences = on.map((g) => {
-      const p = prev.get(g.id);
-      const keep = p && !changed.includes(g.id);
-      return { id: g.id, name: g.name, filters: groupFilters(g), page: keep ? p.page : 1, saturatedAt: keep ? p.saturatedAt : null };
-    });
-    await prisma.campaign.update({
-      where: { id: campaign.id },
-      data: { audiences: audiences as unknown as Prisma.InputJsonValue, apolloFilters: filtersForGroups(on) as Prisma.InputJsonValue, audienceCursor: 0, saturatedAt: null, niche: on.map((g) => g.name).slice(0, 3).join(", ") || campaign.niche },
-    });
-  }
+  await pointCampaignAt(orgId, groups, changed);
   let dropped = 0;
   if (dropQueued && changed.length) {
     const r = await prisma.contact.updateMany({
@@ -1345,4 +1485,49 @@ export async function saveTargeting(orgId: string, edits: TargetingEdit[], dropQ
   // Recount the market for the new audiences; the page shows the estimate as soon as it is in.
   await market(orgId, true).catch(() => undefined);
   return { ...(await targetingView(orgId)), dropped };
+}
+
+/** What a campaign being written would find: how many people match and a few of them. Nothing is saved or charged. */
+export interface AudiencePreview {
+  ready: boolean;
+  reason: "incomplete" | "not-connected" | "lookup-failed" | null;
+  count: number | null;
+  people: MarketPerson[];
+}
+
+const previewCache = new Map<string, { at: number; view: AudiencePreview }>();
+
+export async function previewAudience(orgId: string, input: NewAudience): Promise<AudiencePreview> {
+  const none = (reason: AudiencePreview["reason"]): AudiencePreview => ({ ready: false, reason, count: null, people: [] });
+  const titles = clampList(input.titles, 25);
+  const seniorities = clampList(input.seniorities, 11, 20).filter((x) => (ALLOWED_SENIORITIES as readonly string[]).includes(x));
+  const keywords = [...new Set(clampList(input.keywords, MAX_CUSTOM_KEYWORDS).map(kwNorm).filter(Boolean))];
+  const regions = clampList(input.regions, 25);
+  if (!keywords.length || !regions.length || (!titles.length && !seniorities.length)) return none("incomplete");
+  const g: BuyerGroup = {
+    ...normalizeGroup({}, 0),
+    titles,
+    includeSimilarTitles: input.includeSimilarTitles,
+    seniorities,
+    keywords,
+    regions,
+    sizes: clampList(input.sizes, 7, 20).filter((x) => (ALLOWED_COMPANY_SIZES as readonly string[]).includes(x)),
+  };
+  const filters = filtersForGroups([g]);
+  const key = sha256(JSON.stringify([orgId, filters]));
+  const hit = previewCache.get(key);
+  if (hit && Date.now() - hit.at < COUNT_TTL_MS) return hit.view;
+  const apollo = await apolloFor(orgId);
+  if (!apollo) return none("not-connected");
+  try {
+    const r = await apollo.searchPeople(filters, 1, 6);
+    await addUsage(orgId, "searches", 1);
+    const view: AudiencePreview = { ready: true, reason: null, count: r.totalEntries, people: r.people.slice(0, 4).map((p) => personOf(p, "new")) };
+    if (previewCache.size >= 500) previewCache.delete(previewCache.keys().next().value!);
+    previewCache.set(key, { at: Date.now(), view });
+    return view;
+  } catch (err) {
+    logger.warn({ orgId, err: (err as Error).message }, "campaign preview failed");
+    return none("lookup-failed");
+  }
 }

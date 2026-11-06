@@ -10,6 +10,7 @@ import { isPaused } from "./health.js";
 import { colleagueReplied, stopSequence } from "./stop.js";
 import { hasConsent } from "../launch.js";
 import { spentToday } from "../budget.js";
+import { sequenceOf } from "../campaignSequence.js";
 import { checkFirstTouch, checkSubject, unsupportedClaims, type ClaimCorpus } from "../emailRules.js";
 import { targetLocales } from "../pool/personas.js";
 import { prospectTz, slotForStep, windowFor } from "./schedule.js";
@@ -227,9 +228,12 @@ async function corpusFor(orgId: string, c: Contact): Promise<ClaimCorpus> {
   const s = await getSettings(orgId);
   const company = c.companyDomain ? await prisma.company.findUnique({ where: { organizationId_domain: { organizationId: orgId, domain: c.companyDomain } }, select: { description: true, name: true, industry: true } }) : null;
   const proof = Array.isArray(s.proofPoints) ? (s.proofPoints as { claim?: string; source?: string }[]).filter((p) => p?.claim && p?.source) : [];
+  // The customer's own approved sequence is their words too.
+  const campaign = c.campaignId ? await prisma.campaign.findUnique({ where: { id: c.campaignId }, select: { sequence: true } }) : null;
+  const sequence = campaign ? (sequenceOf(campaign) ?? []) : [];
   return {
     prospect: [c.firstName, c.lastName, c.fullName, c.title, c.company, c.industry, c.website, c.location, c.city, c.country, c.headline, company?.name, company?.description, company?.industry].filter(Boolean).join("\n"),
-    customer: [s.senderCompany, s.valueProp, JSON.stringify(s.brandProfile ?? {}), ...proof.map((p) => p.claim)].filter(Boolean).join("\n"),
+    customer: [s.senderCompany, s.valueProp, JSON.stringify(s.brandProfile ?? {}), ...proof.map((p) => p.claim), ...sequence.map((t) => `${t.subject ?? ""}\n${t.body}`)].filter(Boolean).join("\n"),
   };
 }
 
@@ -244,12 +248,12 @@ export const contentGuard: SendMiddleware = async (ctx) => {
   if (ctx.step === 1) {
     const subj = checkSubject(c.messageSubject ?? "", c);
     if (subj) return refuse(ctx, "CONTENT_BLOCKED", `Content blocked: subject ${subj}.`);
-    const first = checkFirstTouch(text ?? "");
+    const first = checkFirstTouch(text ?? "", c.language, [c.company]);
     if (first) return refuse(ctx, "CONTENT_BLOCKED", `Content blocked: ${first}.`);
-  } else if (((text ?? "").match(/\?/g) ?? []).length > 1) {
+  } else if (((text ?? "").match(/[?？؟]/g) ?? []).length > 1) {
     return refuse(ctx, "CONTENT_BLOCKED", "Content blocked: more than one question.");
   }
-  const claims = unsupportedClaims(text ?? "", corpus);
+  const claims = unsupportedClaims(text ?? "", corpus, c.language);
   if (claims.length) return refuse(ctx, "CONTENT_BLOCKED", `Content blocked: unsupported claim (${claims.slice(0, 3).join(", ")}).`);
   return ctx;
 };
@@ -400,6 +404,19 @@ const CONTACT_STATUS_ON_REJECT: Record<string, "BOUNCED" | "BLOCKLISTED" | "UNSU
   DOMAIN_UNHEALTHY: "REJECTED",
 };
 
+/** First emails blocked by the content check get two rewrites before the person is set aside. */
+export const MAX_REWRITES_AFTER_BLOCK = 2;
+
+/** Sends the person back to the writer, unless their email was already blocked too often. True when sent back. */
+export async function rewriteAfterBlock(contactId: string): Promise<boolean> {
+  const blocked = await prisma.send.count({ where: { contactId, isFirstTouch: true, status: "REJECTED", rejectCode: "CONTENT_BLOCKED" } });
+  if (blocked > MAX_REWRITES_AFTER_BLOCK) return false;
+  await prisma.contact
+    .update({ where: { id: contactId }, data: { status: "NEW", personalizationStatus: "retry_1", personalization: null, messageSubject: null, nextTouchAt: null } })
+    .catch(() => undefined);
+  return true;
+}
+
 export type SendOutcome = { ok: true; sendId: string; mailboxId: string } | { ok: false; code: string; message: string; wait: boolean };
 
 /** Runs one person through the chain and cleans up after a refusal. */
@@ -419,7 +436,9 @@ export async function runPipeline(start: SendContext, chain: SendMiddleware[] = 
       data: { organizationId: ctx.customerId, campaignId: ctx.campaignId, contactId: ctx.prospectId, mailboxId: ctx.mailboxId ?? null, domainId: ctx.domainId ?? null, isFirstTouch: ctx.isFirstTouch, step: ctx.step, status: "REJECTED", rejectCode: code, rejectReason: message.slice(0, 500), resolvedAt: new Date() },
     });
     const status = CONTACT_STATUS_ON_REJECT[code];
-    if (status && ctx.isFirstTouch) await prisma.contact.update({ where: { id: ctx.prospectId }, data: { status } }).catch(() => undefined);
+    if (code === "CONTENT_BLOCKED" && ctx.isFirstTouch && (await rewriteAfterBlock(ctx.prospectId))) {
+      // The email is written again instead of the person being dropped (twice at most).
+    } else if (status && ctx.isFirstTouch) await prisma.contact.update({ where: { id: ctx.prospectId }, data: { status } }).catch(() => undefined);
     // A follow-up that can never go: the sequence ends here and what was held for it goes back.
     if (!ctx.isFirstTouch) await releaseForContact(ctx.prospectId, `Sequence ended (${code})`);
   }

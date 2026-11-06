@@ -12,6 +12,11 @@ export interface MailboxCreds {
   smtpPort: number;
   imapHost: string;
   imapPort: number;
+  /**
+   * An OAuth 2.0 access token (Google Workspace). When set, SMTP and IMAP sign in with XOAUTH2 and `password` is
+   * empty. Fetched fresh for each use by credsFor, so it is never older than its hour.
+   */
+  accessToken?: string;
 }
 
 export interface OutboundMessage {

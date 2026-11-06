@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { api, createTenant, fakeAi, GOOD_FIRST_TOUCH, makeCampaign, makeContact, makePoolMailbox, resetDb, sendable, transport } from "./helpers.js";
 import { prisma } from "../src/lib/prisma.js";
+import { approveBatch, handoffToReview } from "../src/domain/batches.js";
 import { setAiClient } from "../src/integrations/ai.js";
 import { setFinders, findEmail, type EmailFinder } from "../src/integrations/finders.js";
 import { BANNED_WORDS, generateNames, isBannedName, patternOf, planBatch } from "../src/domain/pool/names.js";
@@ -198,6 +199,22 @@ describe("sequence rules", () => {
     void campaign;
   });
 
+  it("sends follow-ups first, up to the day's room, and moves the rest to the next sending day", async () => {
+    await makePoolMailbox();
+    const { t } = await started("ann@acme.com");
+    await started("bob@bolt.com", t.orgId);
+    await started("cy@crane.com", t.orgId);
+    // 5 emails a day ($0.20); 3 first emails already went today, so 2 follow-ups fit and the third waits a day.
+    await prisma.orgSettings.update({ where: { organizationId: t.orgId }, data: { autopilotEnabled: true, dailyBudgetDecicents: 200n, sendDays: [1, 2, 3, 4, 5, 6, 7], sendingWindowStart: "00:00", sendingWindowEnd: "23:59" } });
+    await prisma.contact.updateMany({ where: { organizationId: t.orgId }, data: { nextTouchAt: new Date(Date.now() - 1000) } });
+    const r = await runFollowUps(t.orgId);
+    expect(r).toMatchObject({ sent: 2, deferred: 1 });
+    const waiting = await prisma.contact.findFirstOrThrow({ where: { organizationId: t.orgId, nextTouchAt: { gt: new Date() } , lastContactedAt: { not: null } }, orderBy: { nextTouchAt: "asc" } });
+    // Waits for tomorrow, not dropped: the sequence carries on a day later.
+    expect(waiting.sequenceStoppedAt).toBeNull();
+    expect(waiting.nextTouchAt!.getTime() - Date.now()).toBeLessThan(2 * 86_400_000);
+  });
+
   it("cancels the next follow-up as soon as one mailbox poll reads their reply", async () => {
     const m = await makePoolMailbox();
     const { t, p } = await started();
@@ -373,6 +390,85 @@ describe("customer controls", () => {
     expect(view.body.data.people[0].emails).toHaveLength(4);
     await api().post("/api/v1/launch/approve").set(t.auth).send({}).expect(200);
     expect((await pushQueue(t.orgId, { ignoreWindow: true })).pushed).toBe(3);
+  });
+
+  it("approves only the people that were on screen, never the next ones in line behind someone left out", async () => {
+    const t = await createTenant({ approved: false });
+    const campaign = await makeCampaign(t.orgId);
+    const people = [];
+    for (let i = 0; i < 3; i++) people.push(await makeContact(t.orgId, sendable(campaign.id, { approvedAt: null, approvalSource: null })));
+    const shown = people.slice(0, 2).map((p) => p.id);
+    const r = await api().post("/api/v1/launch/approve").set(t.auth).send({ shownIds: shown, excludeIds: [shown[1]] }).expect(200);
+    expect(r.body.data.approved).toBe(1);
+    const after = await prisma.contact.findMany({ where: { id: { in: people.map((p) => p.id) } }, select: { id: true, approvedAt: true, status: true } });
+    const byId = new Map(after.map((x) => [x.id, x]));
+    expect(byId.get(shown[0])!.approvedAt).not.toBeNull();
+    expect(byId.get(shown[1])!.status).toBe("REJECTED");
+    // Never on screen: still waiting for a person.
+    expect(byId.get(people[2].id)!.approvedAt).toBeNull();
+  });
+
+  it("before the first batch is approved, a weekly list can't be approved, by hand or by the auto setting", async () => {
+    const t = await createTenant({ approved: false });
+    await prisma.orgSettings.update({ where: { organizationId: t.orgId }, data: { autoApproveBatches: true } });
+    const campaign = await makeCampaign(t.orgId);
+    const batch = await prisma.weeklyBatch.create({ data: { organizationId: t.orgId, weekStart: new Date("2030-01-07"), status: "SOURCING" } });
+    const p = await makeContact(t.orgId, sendable(campaign.id, { batchId: batch.id, approvedAt: null, approvalSource: null }));
+    await handoffToReview(t.orgId, batch.id);
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: p.id } })).approvedAt).toBeNull();
+    expect(await approveBatch(t.orgId, batch.id)).toMatchObject({ ok: false });
+    // The first batch can still be approved, and the person is in it.
+    expect((await api().get("/api/v1/launch").set(t.auth).expect(200)).body.data.ready).toBe(1);
+  });
+
+  it("the approve page shows the audience behind the first people, from the saved market check, until approved", async () => {
+    const t = await createTenant({ approved: false });
+    const campaign = await makeCampaign(t.orgId);
+    await makeContact(t.orgId, sendable(campaign.id, { approvedAt: null, approvalSource: null }));
+    const market = { available: true, people: 25223, verified: 18400, groups: [{ id: "g1", count: 25223 }], sample: { size: 100, byCountry: [["United States", 60]], bySize: [["1–10 staff", 70]] }, checkedAt: new Date().toISOString() };
+    const groups = [{ id: "g1", name: "Agency owners", on: true }, { id: "g2", name: "Off", on: false }];
+    await prisma.onboarding.upsert({
+      where: { organizationId: t.orgId },
+      create: { organizationId: t.orgId, domain: "example.com", brand: "Example", icp: {}, groups, market },
+      update: { groups, market },
+    });
+    const v = (await api().get("/api/v1/launch").set(t.auth).expect(200)).body.data;
+    expect(v.audience).toMatchObject({ people: 25223, reachable: 18400, audiences: [{ name: "Agency owners", people: 25223 }], countries: [["United States", 60]], sampleSize: 100 });
+    await api().post("/api/v1/launch/approve").set(t.auth).send({}).expect(200);
+    expect((await api().get("/api/v1/launch").set(t.auth).expect(200)).body.data.audience).toBeNull();
+  });
+
+  it("'keep emailing new people automatically' approves the waiting weekly list and turns the setting on; off leaves both alone", async () => {
+    for (const keep of [true, false]) {
+      const t = await createTenant({ approved: false });
+      const campaign = await makeCampaign(t.orgId);
+      const first = await makeContact(t.orgId, sendable(campaign.id, { approvedAt: null, approvalSource: null }));
+      const batch = await prisma.weeklyBatch.create({ data: { organizationId: t.orgId, weekStart: new Date(`2030-01-0${keep ? 7 : 8}`), status: "REVIEW" } });
+      const later = await makeContact(t.orgId, sendable(campaign.id, { batchId: batch.id, approvedAt: null, approvalSource: null }));
+      const r = await api().post("/api/v1/launch/approve").set(t.auth).send({ shownIds: [first.id], autoContinue: keep }).expect(200);
+      expect(r.body.data).toMatchObject({ approved: 1, continued: keep ? 1 : 0 });
+      expect((await getSettings(t.orgId)).autoApproveBatches).toBe(keep);
+      const l = await prisma.contact.findUniqueOrThrow({ where: { id: later.id } });
+      expect(l.approvalSource).toBe(keep ? "auto" : null);
+      expect((await prisma.weeklyBatch.findUniqueOrThrow({ where: { id: batch.id } })).status).toBe(keep ? "APPROVED" : "REVIEW");
+      // The first person was reviewed by a person, never recorded as automatic.
+      expect((await prisma.contact.findUniqueOrThrow({ where: { id: first.id } })).approvalSource).toBe("review");
+    }
+  });
+
+  it("shows who is up next on the dashboard, and leaves someone out before their first email (not after)", async () => {
+    const t = await createTenant();
+    const campaign = await makeCampaign(t.orgId);
+    const soon = await makeContact(t.orgId, sendable(campaign.id, { nextTouchAt: new Date(Date.now() + 3_600_000) }));
+    const later = await makeContact(t.orgId, sendable(campaign.id, { nextTouchAt: new Date(Date.now() + 7_200_000) }));
+    const sent = await makeContact(t.orgId, sendable(campaign.id, { lastContactedAt: new Date() }));
+    const c = (await api().get("/api/v1/dashboard/cockpit").set(t.auth).expect(200)).body.data;
+    expect(c.upNext.people.map((p: { id: string }) => p.id)).toEqual([soon.id, later.id]);
+    expect(c.upNext.total).toBe(2);
+    await api().post(`/api/v1/contacts/${soon.id}/leave-out`).set(t.auth).expect(200);
+    expect(await prisma.contact.findUniqueOrThrow({ where: { id: soon.id } })).toMatchObject({ status: "REJECTED", nextTouchAt: null });
+    expect((await api().get("/api/v1/dashboard/cockpit").set(t.auth).expect(200)).body.data.upNext.total).toBe(1);
+    await api().post(`/api/v1/contacts/${sent.id}/leave-out`).set(t.auth).expect(400);
   });
 
   it("records consent word for word, with the user, time and IP, before the first send", async () => {

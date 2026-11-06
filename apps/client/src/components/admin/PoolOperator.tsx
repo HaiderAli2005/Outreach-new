@@ -97,7 +97,7 @@ function ActivateDialog({ row, onClose }: { row: PoolWarmingRow; onClose: () => 
       }
     >
       <p style={{ margin: 0 }}>
-        It is on {row.status === "AGING" ? "its quiet month and has not started warmup" : `warmup day ${row.warmupDay} of ${WARMUP_DAYS}`}, with a 7-day bounce rate of {pct(row.bounce7)} over {n0(row.sends7)} sends. Promoting it early sends it to full volume before its reputation is built, which raises the risk of burning it.
+        It is on {row.status === "AGING" ? "its quiet aging period and has not started warmup" : `warmup day ${row.warmupDay} of ${WARMUP_DAYS}`}, with a 7-day bounce rate of {pct(row.bounce7)} over {n0(row.sends7)} sends. Promoting it early sends it to full volume before its reputation is built, which raises the risk of burning it.
       </p>
       <p className="fine" style={{ marginTop: 8 }}>
         It is refused anyway if SPF, DKIM or DMARC don&apos;t resolve, if our DKIM signature hasn&apos;t passed the seed test in the last 3 days, or if its 7-day bounce rate is 2% or more.
@@ -121,7 +121,7 @@ export function WarmingTable({ rows }: { rows: PoolWarmingRow[] }) {
   if (!rows.length)
     return (
       <Empty icon="flame" title="Nothing warming up">
-        Domains you add start a 30-day quiet month, then the ladder.
+        Domains you add first age quietly (no email), then climb the warmup ladder to full volume.
       </Empty>
     );
   return (
@@ -153,7 +153,7 @@ export function WarmingTable({ rows }: { rows: PoolWarmingRow[] }) {
                     <span style={{ width: `${Math.round((w.warmupDay / WARMUP_DAYS) * 100)}%` }} />
                   </div>
                   <small className="m">
-                    {w.status === "AGING" ? `quiet month, warmup starts after` : `day ${w.warmupDay} of ${WARMUP_DAYS}`}, active around {day(w.activeOn)}
+                    {w.status === "AGING" ? `aging quietly, warmup starts after` : `day ${w.warmupDay} of ${WARMUP_DAYS}`}, active around {day(w.activeOn)}
                   </small>
                 </td>
                 <td className="num-cell">{n0(w.capToday)}</td>
@@ -199,7 +199,7 @@ export function ForcedTable({ rows }: { rows: AdminPoolView["forced"] }) {
                 {f.domain} <Chip tone={f.status === "ACTIVE" ? "y" : "r"}>{f.status === "ACTIVE" ? "forced active" : f.status.toLowerCase()}</Chip>
               </td>
               <td className="m">{ago(f.at)}</td>
-              <td>{f.fromDay ? `warmup day ${f.fromDay}` : "quiet month"}</td>
+              <td>{f.fromDay ? `warmup day ${f.fromDay}` : "aging period"}</td>
               <td className="m">{f.by ?? "unknown"}</td>
               <td>{f.reason}</td>
               <td className="num-cell">{pct(f.bounce7)}</td>

@@ -7,33 +7,50 @@ import { logSystem } from "../systemLog.js";
 import { REGION_TZ } from "../sending/schedule.js";
 import { credsFor, transportFor, transportRefFor } from "../sending/transport/index.js";
 import { checkPoolDomain } from "./auth.js";
-import { retireMailbox, toRepliesOnly } from "./lifecycle.js";
+import { agingUntilFrom, retireMailbox, toRepliesOnly } from "./lifecycle.js";
 import { invalidateConsole } from "./metrics.js";
 import { PERSONA_SEED } from "./personaSeed.js";
 import { localPartFor } from "./personas.js";
 import { activateWarmed, closeFilledReorders } from "./restock.js";
+import { buildConnectUrl, delegationSteps, exchangeConnectCode, GOOGLE_IMAP, GOOGLE_SMTP, saveServiceAccount, serviceAccount, type ConnectState, type GoogleSecret } from "../../integrations/googleMail.js";
+import { googleMailClient, googleMailRedirectUri } from "../../config/env.js";
 
 /**
  * Domains and mailboxes an operator bought elsewhere (any registrar, any mail host) and adds by hand.
  *
  *   warmed  already sending elsewhere: goes ACTIVE as soon as SPF, DKIM and DMARC pass, mailboxes at 30 a day
- *   new     fresh: waits for DNS, ages 30 days sending nothing, then the 5 / 10 / 20 / 30 ladder
+ *   new     fresh: waits for DNS, ages AGING_DAYS (14) sending nothing, then the 5 / 10 / 20 / 30 ladder
  *
  * Every mailbox signs in over SMTP and IMAP before it may send. Its password goes into the secret store, never into
  * this database, a log or an API response.
+ *
+ * A Google Workspace mailbox needs no password at all (auth "google"): it signs in with OAuth, either through Aperture's
+ * service account once the Workspace admin has allowed it (domain-wide delegation), or, one mailbox at a time, with
+ * "Connect with Google". See integrations/googleMail.ts.
  */
+
+/** How a mailbox signs in, kept in mailbox.provider: a password, the service account, or its own Google connection. */
+export type MailboxAuth = "password" | "google-workspace" | "google-oauth";
+export const authOf = (provider: string): MailboxAuth => (provider === "google-workspace" ? "google-workspace" : provider === "google-oauth" ? "google-oauth" : "password");
 
 export interface MailboxInput {
   address: string;
   firstName: string;
   lastName?: string | null;
+  /** "google": a Google Workspace mailbox signed in with OAuth, no password, Gmail's own servers. Default "password". */
+  auth?: "password" | "google";
   username?: string | null;
-  password: string;
-  smtpHost: string;
-  smtpPort: number;
-  imapHost: string;
-  imapPort: number;
+  password?: string | null;
+  smtpHost?: string | null;
+  smtpPort?: number | null;
+  imapHost?: string | null;
+  imapPort?: number | null;
 }
+
+export type Login = { username?: string | null; password: string } | { google: GoogleSecret };
+
+/** The sign-in a new mailbox is stored with. */
+const loginOf = (m: MailboxInput): Login => (m.auth === "google" ? { google: { kind: "google-workspace" } } : { username: m.username, password: m.password ?? "" });
 
 export interface DomainInput {
   name: string;
@@ -57,6 +74,7 @@ function checkMailboxes(domain: string, list: MailboxInput[], existing: string[]
     if (local.replace(/[^a-z]/g, "").length < 2) throw badRequest(`${address} reads as automated. Use a real first name before the @.`);
     if (seen.has(address)) throw badRequest(`${address} is listed twice`);
     seen.add(address);
+    if (m.auth !== "google" && (!m.password || !m.smtpHost?.trim() || !m.imapHost?.trim() || !m.smtpPort || !m.imapPort)) throw badRequest(`${address} needs a password and its SMTP and IMAP servers`);
     try {
       localPartFor(m.firstName);
     } catch {
@@ -65,7 +83,7 @@ function checkMailboxes(domain: string, list: MailboxInput[], existing: string[]
   }
 }
 
-async function personaFor(firstName: string, lastName: string | null | undefined, locale: string): Promise<string> {
+export async function personaFor(firstName: string, lastName: string | null | undefined, locale: string): Promise<string> {
   const name = firstName.trim();
   const region = PERSONA_SEED[locale]?.region ?? "global";
   const p = await prisma.persona.upsert({ where: { firstName_locale: { firstName: name, locale } }, create: { firstName: name, lastName: lastName?.trim() || null, locale, region }, update: {} });
@@ -73,10 +91,18 @@ async function personaFor(firstName: string, lastName: string | null | undefined
 }
 
 /** Stores the sign-in and checks it over SMTP and IMAP. A mailbox that cannot sign in is held back in ERROR. */
-async function signIn(mailboxId: string, login?: { username?: string | null; password: string }): Promise<{ ok: boolean; error?: string }> {
-  const m = await prisma.mailbox.findUniqueOrThrow({ where: { id: mailboxId } });
+export async function signIn(mailboxId: string, login?: Login): Promise<{ ok: boolean; error?: string }> {
+  let m = await prisma.mailbox.findUniqueOrThrow({ where: { id: mailboxId } });
   const ref = m.credentialRef ?? mailboxCredentialRef(m.id);
-  if (login) await secretStore().put(ref, JSON.stringify({ u: login.username?.trim() || m.address, p: login.password }));
+  if (login && "google" in login) {
+    await secretStore().put(ref, JSON.stringify(login.google));
+    // A Google mailbox always talks to Gmail's own servers.
+    m = await prisma.mailbox.update({ where: { id: m.id }, data: { provider: login.google.kind, smtpHost: GOOGLE_SMTP.host, smtpPort: GOOGLE_SMTP.port, imapHost: GOOGLE_IMAP.host, imapPort: GOOGLE_IMAP.port } });
+  } else if (login) {
+    await secretStore().put(ref, JSON.stringify({ u: login.username?.trim() || m.address, p: login.password }));
+    // A mailbox Aperture ordered keeps its supplier as provider: the supplier issued this password and cancels it later.
+    if (m.provider !== "manual" && m.provider !== "inboxkit") m = await prisma.mailbox.update({ where: { id: m.id }, data: { provider: "manual" } });
+  }
   if (!m.credentialRef) await prisma.mailbox.update({ where: { id: m.id }, data: { credentialRef: ref } });
   let check: { smtp: boolean; imap: boolean; error?: string };
   try {
@@ -107,13 +133,13 @@ async function createMailboxRow(domain: { id: string; region: string }, input: M
       lastName: input.lastName?.trim() || null,
       fromNameDefault: [input.firstName.trim(), input.lastName?.trim()].filter(Boolean).join(" "),
       personaId: await personaFor(input.firstName, input.lastName, locale),
-      provider: "manual",
+      provider: input.auth === "google" ? "google-workspace" : "manual",
       status: "CONNECTING",
       transportRef: transportRefFor(address),
-      smtpHost: input.smtpHost.trim(),
-      smtpPort: input.smtpPort,
-      imapHost: input.imapHost.trim(),
-      imapPort: input.imapPort,
+      smtpHost: input.auth === "google" ? GOOGLE_SMTP.host : (input.smtpHost ?? "").trim(),
+      smtpPort: input.auth === "google" ? GOOGLE_SMTP.port : input.smtpPort,
+      imapHost: input.auth === "google" ? GOOGLE_IMAP.host : (input.imapHost ?? "").trim(),
+      imapPort: input.auth === "google" ? GOOGLE_IMAP.port : input.imapPort,
       timezone: REGION_TZ[domain.region] ?? "UTC",
       dailyLimit: SENDS_PER_WARM_INBOX,
     },
@@ -123,7 +149,7 @@ async function createMailboxRow(domain: { id: string; region: string }, input: M
 
 async function createMailbox(domain: { id: string; region: string }, input: MailboxInput, locale: string) {
   const m = await createMailboxRow(domain, input, locale);
-  const r = await signIn(m.id, { username: input.username, password: input.password });
+  const r = await signIn(m.id, loginOf(input));
   return { ...m, ok: r.ok, error: r.error };
 }
 
@@ -152,7 +178,7 @@ export async function addDomain(input: DomainInput, operatorId: string) {
       region: input.region,
       registeredAt: now,
       dkimSelector: input.dkimSelector?.trim() || null,
-      agingUntil: input.warmed ? null : new Date(now.getTime() + 30 * 86_400_000),
+      agingUntil: input.warmed ? null : agingUntilFrom(now),
     },
   });
   const rows = [];
@@ -161,7 +187,7 @@ export async function addDomain(input: DomainInput, operatorId: string) {
   // the mailboxes that signed in.
   const mailboxes = await Promise.all(
     rows.map(async (row, i) => {
-      const r = await signIn(row.id, { username: input.mailboxes[i].username, password: input.mailboxes[i].password });
+      const r = await signIn(row.id, loginOf(input.mailboxes[i]));
       return { ...row, ok: r.ok, error: r.error };
     }),
   );
@@ -257,6 +283,10 @@ export async function listDomains() {
     name: d.name,
     status: d.status,
     warmed: d.prewarmed,
+    supplier: d.supplier,
+    externalWarmup: d.externalWarmup,
+    supplierWarmupAt: d.supplierWarmupAt,
+    holdReason: d.status === "AGING" && d.externalWarmup ? d.lastError : null,
     region: d.region,
     registrar: d.registrar,
     dns: { spf: d.spfOk, dkim: d.dkimOk, dmarc: d.dmarcOk, selector: d.dkimSelector, checkedAt: d.dnsCheckedAt },
@@ -277,7 +307,65 @@ export async function listDomains() {
       sentToday: m.sentTodayOn && m.sentTodayOn.toISOString().slice(0, 10) === today ? m.sentToday : 0,
       smtpHost: m.smtpHost,
       imapHost: m.imapHost,
+      auth: authOf(m.provider),
+      supplier: m.provider === "inboxkit" ? ("inboxkit" as const) : null,
+      warmupHealth: m.warmupHealth,
       error: m.lastError,
     })),
   }));
+}
+
+// ─── Google Workspace sign-in ─────────────────────────────────────────────────────────────────────────────────
+
+/** What Admin > Domains shows about Google sign-in: the client ID a Workspace admin must allow, and what is missing. */
+export async function googleMailStatus() {
+  const sa = await serviceAccount();
+  return {
+    workspace: sa ? { configured: true as const, serviceAccount: sa.clientEmail, clientId: sa.clientId, steps: delegationSteps(sa.clientId) } : { configured: false as const },
+    connect: { configured: !!(googleMailClient.id && googleMailClient.secret), redirectUri: googleMailRedirectUri },
+  };
+}
+
+/** Keeps the service account key in the secret store. The key itself is never returned. */
+export async function setServiceAccount(raw: string, operatorId: string) {
+  const sa = await saveServiceAccount(raw);
+  await logSystem(null, "INFO", "pool", `Google Workspace service account set to ${sa.clientEmail} by an operator.`, { operatorId });
+  return googleMailStatus();
+}
+
+/** Signs a Google mailbox in through the service account (after its Workspace admin allowed Aperture). */
+/** An InboxKit mailbox keeps InboxKit's app password: switching it would lose track of it for cancelling later. */
+const SUPPLIER_SIGN_IN = "This mailbox was ordered through InboxKit and signs in with InboxKit's app password by itself.";
+
+export async function signInWithWorkspace(mailboxId: string, operatorId: string) {
+  const m = await prisma.mailbox.findUnique({ where: { id: mailboxId }, select: { id: true, organizationId: true, sendingDomainId: true, status: true, address: true, provider: true } });
+  if (!m || m.organizationId) throw notFound("Pool mailbox");
+  if (m.status === "RETIRED") throw conflict("This mailbox is retired");
+  if (m.provider === "inboxkit") throw conflict(SUPPLIER_SIGN_IN);
+  const r = await signIn(m.id, { google: { kind: "google-workspace" } });
+  if (r.ok && m.sendingDomainId) await promoteIfWarmed(m.sendingDomainId);
+  await logSystem(null, "INFO", "pool", `${m.address} set to sign in through the Google Workspace service account by an operator.`, { mailboxId: m.id, operatorId });
+  await invalidateConsole();
+  return r;
+}
+
+/** Step 1 of "Connect with Google": where to send the operator's browser. */
+export async function googleConnectUrl(mailboxId: string, operatorId: string) {
+  const m = await prisma.mailbox.findUnique({ where: { id: mailboxId }, select: { id: true, organizationId: true, status: true, address: true, provider: true } });
+  if (!m || m.organizationId) throw notFound("Pool mailbox");
+  if (m.status === "RETIRED") throw conflict("This mailbox is retired");
+  if (m.provider === "inboxkit") throw conflict(SUPPLIER_SIGN_IN);
+  return { url: buildConnectUrl({ mailboxId: m.id, address: m.address, operatorId }) };
+}
+
+/** Step 2: Google sent the operator back. Keeps the refresh token and signs the mailbox in with it. */
+export async function finishGoogleConnect(code: string, state: ConnectState) {
+  const m = await prisma.mailbox.findUnique({ where: { id: state.mailboxId }, select: { id: true, organizationId: true, sendingDomainId: true, status: true, address: true } });
+  if (!m || m.organizationId || m.status === "RETIRED") throw notFound("Pool mailbox");
+  const { refreshToken } = await exchangeConnectCode(code, { ...state, address: m.address });
+  const r = await signIn(m.id, { google: { kind: "google-oauth", rt: refreshToken } });
+  if (r.ok && m.sendingDomainId) await promoteIfWarmed(m.sendingDomainId);
+  await logSystem(null, "INFO", "pool", `${m.address} connected with Google by an operator.`, { mailboxId: m.id, operatorId: state.operatorId });
+  await invalidateConsole();
+  return { address: m.address, ...r };
 }

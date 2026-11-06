@@ -5,7 +5,7 @@ import { parseBody } from "../../middleware/validate.js";
 import { notFound, unprocessable } from "../../lib/errors.js";
 import { businessProfileView, saveBusinessProfile } from "../../domain/businessProfile.js";
 import { activeCampaign, saveSequence, sequenceErrors, sequenceView } from "../../domain/campaignSequence.js";
-import { saveTargeting, targetingImpact, targetingView } from "../onboarding/onboarding.service.js";
+import { createAudience, importAudiences, MAX_AUDIENCES, previewAudience, saveTargeting, targetingImpact, targetingView } from "../onboarding/onboarding.service.js";
 
 const line = (n: number) => z.string().trim().max(n);
 const list = (n: number, len = 200) => z.array(z.string().trim().min(1).max(len)).max(n);
@@ -47,7 +47,7 @@ export async function saveSequenceHandler(req: Request, res: Response) {
 }
 
 const editSchema = z.object({
-  groups: z.array(z.object({ id: z.string().max(40), on: z.boolean(), titles: list(25, 80), keywords: list(25, 80), sizes: list(7, 20), regions: list(25, 80) })).min(1).max(12),
+  groups: z.array(z.object({ id: z.string().max(40), on: z.boolean(), titles: list(25, 80), keywords: list(25, 80), sizes: list(7, 20), regions: list(25, 80) })).min(1).max(MAX_AUDIENCES),
 });
 
 export async function targeting(req: Request, res: Response) {
@@ -62,4 +62,37 @@ export async function targetingCheck(req: Request, res: Response) {
 export async function saveTargetingHandler(req: Request, res: Response) {
   const { groups, dropQueued } = parseBody(req, editSchema.extend({ dropQueued: z.boolean().default(false) }));
   return ok(res, await saveTargeting(ctx(req).orgId, groups, dropQueued));
+}
+
+const newAudienceSchema = z.object({
+  name: z.string().trim().min(1).max(60),
+  description: line(600).default(""),
+  why: line(600).default(""),
+  titles: list(25, 80).default([]),
+  includeSimilarTitles: z.boolean().default(true),
+  seniorities: list(11, 20).default([]),
+  keywords: list(25, 80).min(1),
+  sizes: list(7, 20).default([]),
+  regions: list(25, 80).min(1),
+  source: z.enum(["apollo", "maps", "both"]).default("apollo"),
+  namedOnly: z.boolean().default(false),
+  mapsCities: list(40, 80).default([]),
+});
+
+/** "New campaign": one more audience, searched on its own and switched on right away. */
+export async function createAudienceHandler(req: Request, res: Response) {
+  return ok(res, await createAudience(ctx(req).orgId, parseBody(req, newAudienceSchema)));
+}
+
+/** The live count and a few example people while a new campaign is being written. */
+export async function previewAudienceHandler(req: Request, res: Response) {
+  const body = parseBody(req, newAudienceSchema.extend({ name: z.string().max(60).default(""), keywords: list(25, 80).default([]), regions: list(25, 80).default([]) }));
+  return ok(res, await previewAudience(ctx(req).orgId, body));
+}
+
+/** Many campaigns from one CSV, parsed in the browser. `check: true` only checks the rows. */
+export async function importAudiencesHandler(req: Request, res: Response) {
+  const row = newAudienceSchema.extend({ name: z.string().trim().max(60).default(""), keywords: list(25, 80).default([]), regions: list(25, 80).default([]) });
+  const { rows, check } = parseBody(req, z.object({ rows: z.array(row).min(1).max(MAX_AUDIENCES), check: z.boolean().default(false) }));
+  return ok(res, await importAudiences(ctx(req).orgId, rows, check));
 }

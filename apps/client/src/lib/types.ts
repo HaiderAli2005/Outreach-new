@@ -382,15 +382,25 @@ export interface SendingOutlook {
   cap: number;
   window: { tz: string; start: string; end: string; days: number[]; open: boolean; closesAt: string | null; opensAt: string | null };
   reason: QuietReason | null;
+  /** People left for a first email against about two days of new-people slots; `low` is under one day. */
+  supply?: { ready: number; need: number; low: boolean; finding: boolean };
+  /** When the next new people's first emails start, in the prospects' own zone (window.tz), and how many go that day. */
+  newPeople?: { at: string; count: number } | null;
 }
 
 export interface Cockpit {
-  engine: { on: boolean; state: "running" | "unpaid" | "paused" | "reviewing" | "resting" | "capacity" | "reserve" | "approval" | "preparing"; todaySent: number; todayTarget: number; dayKey: string; weekday: number; window: string; windowStart: string; capacityLiveOn: string | null };
-  budget: { emailsPerDay: number; perDay: string | null; deciCents: string | null };
+  engine: { on: boolean; state: "running" | "unpaid" | "paused" | "reviewing" | "resting" | "capacity" | "reserve" | "approval" | "preparing"; todaySent: number; todayTarget: number; /** First emails today, and the new people a day the volume carries (emails a day / 4). */ newToday?: number; newTarget?: number; followupsToday?: number; dayKey: string; weekday: number; window: string; windowStart: string; capacityLiveOn: string | null };
+  budget: { emailsPerDay: number; perDay: string | null; deciCents: string | null; /** Spent today, as money: "$1.00". */ spentToday?: string };
   milestones: { contacts: boolean; sent: boolean; replied: boolean };
   /** When the next emails really go out, or why nothing is scheduled. */
   outlook: SendingOutlook;
   progress: { found: number; verified: number; written: number; sentEver: boolean; results: { sent: number; delivered: number; bounceRate: string; replies: number } };
+  /** The next people to get a first email, soonest first, and how many are lined up in all. */
+  /** Today's sends on one line: sent in the last 24 hours, and booked for the next 24 (ISO times). */
+  today?: { sent: string[]; booked: string[] };
+  /** Today in one number: emails sent or booked against the daily amount, and why it is lower when it is. */
+  day?: { plan: number; chosen?: number; mailboxLimit?: number | null; moreMailboxesOn?: string | null; planned: number; sent: number; reason: "approval" | "preparing" | "nobody" | null; waitingApproval: number; preparing: number };
+  upNext?: { total: number; people: { id: string; name: string; title: string | null; company: string | null; at: string | null; tz: string | null }[] };
   needsYou: {
     /** The first people waiting for the customer's approval before anything sends; null once approved or when not asked. */
     firstBatch: { ready: number; needed: number; finding: boolean; found: number; written: number; problem: string | null } | null;
@@ -432,15 +442,22 @@ export interface PerformanceTotals {
   spent: string;
 }
 
-export type CampaignState = "sending" | "finding" | "waiting" | "paused" | "off" | "exhausted";
+export type CampaignState = "sending" | "lined-up" | "finding" | "waiting" | "paused" | "off" | "exhausted";
 
 /** What went out, arrived, came back and cost in the chosen period, against the period before, and per campaign. */
+/** The periods the cockpit offers; "all" runs from the first email ever sent. */
+export type PerformancePeriod = "today" | "7d" | "30d" | "all";
+
 export interface Performance {
-  days: 7 | 30;
+  /** Days covered: 1 for today, 7, 30, or since the first email for "all". */
+  days: number;
+  period: PerformancePeriod;
+  /** The campaign (or audience) the figures are narrowed to, or null for all of them. */
+  campaign: string | null;
   series: { day: string; sent: number; delivered: number; bounced: number; replies: number; hot: number; spentDecicents: number }[];
   totals: PerformanceTotals & { pricePerEmail: string };
   previous: PerformanceTotals;
-  audiences: { id: string; name: string; state: CampaignState; found: number; sent: number; perDay: number; replies: number; replyRate: number; hot: number; spent: string; costPerLead: string | null }[];
+  audiences: { id: string; name: string; state: CampaignState; found: number; inLine?: number; sent: number; perDay: number; replies: number; replyRate: number; hot: number; spent: string; costPerLead: string | null }[];
 }
 
 export type CostLineKey = "infrastructure" | "ai" | "data" | "verification" | "fees";
@@ -494,6 +511,8 @@ export interface NavCounts {
   emailsLeft: number;
   lowBalance: boolean;
   balanceStage: BalanceView["stage"];
+  /** The sending day the balance no longer covers ("Thursday"), when it is running low. */
+  runsOut?: string | null;
 }
 
 export type ContactStatus = "NEW" | "PERSONALIZED" | "QUEUED" | "CONTACTED" | "REPLIED" | "NO_RESPONSE" | "BLOCKLISTED" | "UNSUBSCRIBED" | "BOUNCED" | "REJECTED";
@@ -637,6 +656,7 @@ export interface BatchStats {
   total: number;
   excluded: number;
   sendable: number;
+  written?: number;
   belowFloor: number;
   tierA: number;
   tierB: number;
@@ -708,6 +728,8 @@ export interface OrgSettings {
   sendingWindowStart: string;
   sendingWindowEnd: string;
   language: string;
+  /** Write to each prospect in their own website's language; `language` is then the fallback. */
+  matchProspectLanguage?: boolean;
   personalizationEnabled: boolean;
   requireVerifiedEmail: boolean;
   monthlyCreditCap: number;
@@ -744,7 +766,7 @@ export interface OrgSettings {
   proofPoints: ProofPoint[];
 }
 
-export type Provider = "APOLLO" | "MILLIONVERIFIER" | "SLACK_WEBHOOK";
+export type Provider = "APOLLO" | "MILLIONVERIFIER" | "SLACK_WEBHOOK" | "GOOGLE_PLACES";
 
 export interface CredentialStatus {
   provider: Provider;
@@ -775,6 +797,16 @@ export interface LaunchView {
   needed: number;
   ready: number;
   preparing: number;
+  /** The whole audience behind the first people, from the market check at setup. Null once approved or unknown. */
+  audience?: {
+    people: number | null;
+    reachable: number | null;
+    audiences: { name: string; people: number | null }[];
+    countries: [string, number][];
+    sizes: [string, number][];
+    sampleSize: number;
+    checkedAt: string | null;
+  } | null;
   consent: { at: string; text: string } | null;
   consentText: string;
   people: { id: string; name: string | null; email: string; title: string | null; company: string | null; emailSource: string | null; verified: string | null; emails: LaunchEmail[] }[];
@@ -911,6 +943,8 @@ export interface PoolBurnImpact {
   /** People still in their sequence, whose follow-ups go out from a burned mailbox. */
   sequencesRunning: number;
   customersAffected: number;
+  /** Burned mailboxes grouped by domain, with the conversations each domain still carries. */
+  byDomain: { domain: string; domainBurned: boolean; burnedOn: string | null; mailboxes: number; liveConversations: number; sequencesRunning: number; customers: number }[];
 }
 
 export interface AdminPoolView {
@@ -961,7 +995,8 @@ export interface AdminPoolView {
 }
 
 export type PoolDomainStatus = "REGISTERED" | "AGING" | "WARMING" | "ACTIVE" | "DEGRADED" | "RETIRED";
-export type PoolMailboxStatus = "CONNECTING" | "ERROR" | "WARMING" | "ACTIVE" | "REPLIES_ONLY" | "RETIRED";
+/** CREATING: ordered through InboxKit, which is still building it. */
+export type PoolMailboxStatus = "CREATING" | "CONNECTING" | "ERROR" | "WARMING" | "ACTIVE" | "REPLIES_ONLY" | "RETIRED";
 
 export interface PoolMailbox {
   id: string;
@@ -974,7 +1009,21 @@ export interface PoolMailbox {
   sentToday: number;
   smtpHost: string | null;
   imapHost: string | null;
+  /** How it signs in: a password, Aperture's Google service account, or its own Google connection. */
+  auth: PoolMailboxAuth;
+  /** "inboxkit": ordered through InboxKit, signed in with InboxKit's app password, cancelled there when it retires. */
+  supplier: "inboxkit" | null;
+  /** InboxKit's warmup health: excellent, good, warning, critical or unknown. */
+  warmupHealth: string | null;
   error: string | null;
+}
+
+export type PoolMailboxAuth = "password" | "google-workspace" | "google-oauth";
+
+/** Admin > Domains: Google Workspace sign-in without app passwords. */
+export interface GoogleMailStatus {
+  workspace: { configured: false } | { configured: true; serviceAccount: string; clientId: string; steps: string };
+  connect: { configured: boolean; redirectUri: string };
 }
 
 export interface PoolDomain {
@@ -982,6 +1031,13 @@ export interface PoolDomain {
   name: string;
   status: PoolDomainStatus;
   warmed: boolean;
+  /** "inboxkit" when Aperture ordered it; null when it was added by hand. */
+  supplier: string | null;
+  /** Warmed on InboxKit's warmup network before it joins the ladder at 10 a day. */
+  externalWarmup: boolean;
+  supplierWarmupAt: string | null;
+  /** Past its warmup time but held back from sending, and why. */
+  holdReason: string | null;
   region: string;
   registrar: string;
   dns: { spf: boolean | null; dkim: boolean | null; dmarc: boolean | null; selector: string | null; checkedAt: string | null };
@@ -998,12 +1054,15 @@ export interface NewPoolMailbox {
   address: string;
   firstName: string;
   lastName?: string | null;
+  /** "google": a Google Workspace mailbox that signs in with OAuth, no password; the server fills in Gmail's servers. */
+  auth?: "password" | "google";
   username?: string | null;
-  password: string;
-  smtpHost: string;
-  smtpPort: number;
-  imapHost: string;
-  imapPort: number;
+  /** Not sent for a Google mailbox signed in with OAuth, nor are the four server fields. */
+  password?: string;
+  smtpHost?: string;
+  smtpPort?: number;
+  imapHost?: string;
+  imapPort?: number;
 }
 
 export interface NewPoolDomain {
@@ -1021,6 +1080,34 @@ export interface AddedPoolDomain {
   name: string;
   dns: { spf: boolean; dkim: boolean; dmarc: boolean; moved: "active" | "aging" | null };
   mailboxes: { id: string; address: string; ok: boolean; error?: string }[];
+}
+
+/** What a CSV of warmed mailboxes will add (commit: false) or added (commit: true). Never carries a password. */
+export interface MailboxImport {
+  columns: Partial<Record<"address" | "appPassword" | "password" | "firstName" | "lastName" | "name" | "smtpHost" | "smtpPort" | "imapHost" | "imapPort", string>>;
+  platform: "google" | "microsoft";
+  /** "google": signs in with Google (OAuth), for 2-Step Verification mailboxes. No password is read or kept. */
+  auth: "password" | "google";
+  domains: {
+    name: string;
+    exists: boolean;
+    add: { line: number; address: string; name: string }[];
+    skip: { line: number; address: string; message: string }[];
+    error: string | null;
+    added?: { id?: string; address: string; ok: boolean; error?: string }[];
+  }[];
+  problems: { line: number | null; address: string | null; message: string }[];
+  totals: { mailboxes: number; toAdd: number; domains: number; newDomains: number; skipped: number; failed: number; signedIn?: number };
+  done: boolean;
+}
+
+export interface MailboxImportRequest {
+  csv: string;
+  platform: "google" | "microsoft";
+  auth: "password" | "google";
+  region: string;
+  locale: string;
+  commit: boolean;
 }
 
 /** Whether a domain's site can be read, checked the moment the domain is entered. */
@@ -1117,4 +1204,213 @@ export interface PoolSettings {
   maxBuyPerDay: number;
   autoBuyEnabled: boolean;
   updatedAt: string;
+}
+
+/** A campaign in the sidebar: one audience, with whether it is sending, paused (outreach stopped) or switched off. */
+export interface CampaignNavItem {
+  id: string;
+  name: string;
+  state: "on" | "paused" | "off";
+}
+
+/** One campaign's workspace. Every figure and event is read from the people and the sends. */
+export interface CampaignWorkspace {
+  id: string;
+  name: string;
+  description: string;
+  on: boolean;
+  state: CampaignState;
+  launchedAt: string | null;
+  brief: {
+    why: string;
+    goals: string[];
+    pains: string[];
+    objections: string[];
+    titles: string[];
+    includeSimilarTitles: boolean;
+    seniorities: string[];
+    sizes: string[];
+    regions: string[];
+    keywords: string[];
+    technologies: string[];
+    lookalikeDomains: string[];
+    excludeDomains: string[];
+  } | null;
+  offer: { valueProp: string | null; company: string | null; proof: { claim: string; source: string | null }[] };
+  progress: { found: number; canEmail: number; noAddress: number; checking: number; emailed: number; replied: number; hot: number; steps: { step: number; sent: number }[] };
+  breakdown: { countries: [string, number][]; sizes: [string, number][] };
+  people: { id: string; fullName: string | null; title: string | null; company: string | null; companyDomain: string | null; country: string | null; status: ContactStatus; email: "ok" | "bad" | "checking"; repliedAt: string | null; firstContactedAt: string | null }[];
+  companies: { domain: string; name: string; people: number; country: string | null; employees: number | null; description: string | null }[];
+  timeline: { at: string; kind: "launch" | "found" | "approved" | "sent" | "reply"; text: string }[];
+}
+
+// ─── Admin > Domains: ordering through InboxKit ─────────────────────────────
+
+export interface InboxKitContact {
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  organization?: string;
+  address_line1: string;
+  address_line2?: string;
+  city: string;
+  state: string;
+  country: string;
+  postal_code: string;
+}
+
+export interface InboxKitSettings {
+  workspaceUid: string | null;
+  workspaceName: string | null;
+  contact: Partial<InboxKitContact> | null;
+  redirectUrl: string | null;
+  platform: "GOOGLE" | "MICROSOFT";
+  warmupDays: number;
+  keepWarmupAfterLive: boolean;
+  maxDomainPriceUsd: number;
+}
+
+export interface InboxKitStatus {
+  key: { set: boolean; source: "store" | "env" | null };
+  connected: boolean;
+  error: string | null;
+  /** InboxKit wallet balance, USD. */
+  wallet: number | null;
+  /** estimated: the account's own price wasn't reported, so InboxKit's published price is shown. */
+  prices: { mailboxMonthUsd: number | null; warmupMonthUsd: number | null; estimated?: boolean };
+  workspaces: { uid: string; name: string }[];
+  settings: InboxKitSettings;
+  webhook: { url: string; signature: string };
+  /** What still stops ordering, in the order to fix it. Empty = ready. */
+  blockers: string[];
+}
+
+export type InboxKitSettingsPatch = Partial<Omit<InboxKitSettings, "workspaceName" | "contact" | "workspaceUid">> & { workspaceUid?: string; contact?: Partial<InboxKitContact> };
+
+/** "Order new domains": the suggestion and every number it comes from (server: orders.ts orderPlan). */
+export interface InboxKitPlan {
+  suggested: { domains: number; mailboxes: number };
+  maths: {
+    committedPerDay: number;
+    perMailbox: number;
+    neededMailboxes: number;
+    spareShare: number;
+    spareMailboxes: number;
+    weeklyBurnDomains: number;
+    weeksToSend: number;
+    burnMailboxes: number;
+    sendingMailboxes: number;
+    onTheWayMailboxes: number;
+    orderedMailboxes: number;
+    haveMailboxes: number;
+    shortMailboxes: number;
+  };
+  pool: { capacityPerDay: number; committedPerDay: number };
+  limits: { perBatch: number; perDay: number; placedToday: number; perQuote: number };
+  blockers: string[];
+}
+
+export interface OrderEstimate {
+  domains: number;
+  mailboxes: number;
+  domainsUsd: number;
+  mailboxMonthUsd: number;
+  warmupMonthUsd: number;
+  firstMonthUsd: number;
+  perMonthUsd: number;
+  perEmailUsd: number | null;
+  unit: { mailboxMonthUsd: number | null; warmupMonthUsd: number | null; avgDomainUsd: number | null; estimated?: boolean };
+  walletUsd: number | null;
+  schedule: { day: string; domains: number }[];
+}
+
+export type SupplierOrderStatus = "QUOTED" | "SCHEDULED" | "WAITING_FOR_FUNDS" | "DONE" | "PARTIAL" | "FAILED" | "CANCELLED" | "EXPIRED";
+
+export interface SupplierOrder {
+  id: string;
+  status: SupplierOrderStatus;
+  platform: string;
+  region: string;
+  requested: number;
+  placed: number;
+  pending: number;
+  rejected: number;
+  estimate: OrderEstimate;
+  lastError: string | null;
+  nextRunAt: string | null;
+  expiresAt: string;
+  confirmedAt: string | null;
+  createdAt: string;
+  /** Asked for more than InboxKit had clean names for right now. */
+  short: number;
+  items: { id: string; domain: string | null; priceUsd: number | null; status: "PENDING" | "PLACING" | "PLACED" | "REJECTED"; message: string | null; mailboxes: { email: string | null; name: string }[]; placedAt: string | null }[];
+}
+
+export type PipelineStage = "setting_up" | "dns" | "warmup_booked" | "warming" | "held" | "ladder" | "live" | "burned";
+
+export interface PipelineDomain {
+  id: string;
+  name: string;
+  stage: PipelineStage;
+  label: string;
+  day: number | null;
+  of: number | null;
+  readyOn: string | null;
+  note: string | null;
+  orderedAt: string;
+  syncedAt: string | null;
+  mailboxes: { id: string; address: string; status: PoolMailboxStatus; supplierStatus: string | null; warmup: string | null; health: string | null; score: number | null; inboxRate: number | null; supplierDay: number | null; capToday: number; error: string | null }[];
+}
+
+export interface InboxKitPipeline {
+  counts: Record<PipelineStage, number>;
+  domains: PipelineDomain[];
+  orders: SupplierOrder[];
+}
+
+/** The audience list as a funnel, and one page of the people in it. */
+export interface AudienceList {
+  counts: { found: number; lookedUp: number; withEmail: number; noEmail: number; waiting: number };
+  total: number;
+  page: number;
+  pageSize: number;
+  rows: { id: string; fullName: string | null; title: string | null; company: string | null; companyDomain: string | null; country: string | null; employees: number | null; fitScore: number; status: "WAITING" | "PULLED" | "SKIPPED"; audience: string | null; source?: string; city?: string | null }[];
+}
+
+/** "New campaign": who to find, written by the customer. */
+export interface NewCampaignInput {
+  name: string;
+  description: string;
+  why: string;
+  titles: string[];
+  includeSimilarTitles: boolean;
+  seniorities: string[];
+  keywords: string[];
+  sizes: string[];
+  regions: string[];
+  /** Where people are found: the lead search, Google Maps businesses, or both. */
+  source?: LeadSource;
+  /** Google Maps only: never the address a business publishes (info@...), only named people. */
+  namedOnly?: boolean;
+  /** Google Maps only: cities to search instead of a country's big cities. */
+  mapsCities?: string[];
+}
+
+export type LeadSource = "apollo" | "maps" | "both";
+
+/** What a campaign being written would find on the free lead search. */
+export interface CampaignPreview {
+  ready: boolean;
+  reason: "incomplete" | "not-connected" | "lookup-failed" | null;
+  count: number | null;
+  people: { firstName: string; lastInitial: string; title: string | null; company: string | null; country: string | null; hasEmail: boolean }[];
+}
+
+/** The answer to a campaign CSV: every row checked, and the campaigns made when all rows were fine. */
+export interface CampaignImport {
+  ok: boolean;
+  created: { id: string; name: string }[];
+  problem: string | null;
+  rows: { row: number; name: string; error: string | null }[];
 }

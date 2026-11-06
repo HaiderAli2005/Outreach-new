@@ -10,6 +10,7 @@ import { n0 } from "@/lib/format";
 import type { Draft } from "./SetupSteps";
 
 import { useDock } from "./live/motion";
+import { StepCta } from "./StepCta";
 
 /** Why the first search stopped, and what fixes it. */
 const STOPPED: Record<FirstRunReason, string> = {
@@ -152,6 +153,9 @@ export function LaunchStep({ state, draft, market }: { state: OnboardingState; d
     </Button>
   );
   const { data: cockpit } = useCockpitQuery(undefined, { skip: !launched, pollingInterval: launched ? 5000 : 0, skipPollingIfUnfocused: true });
+  // Same rule as the dashboard: "ready" once the first batch is written, or the search ended with fewer.
+  const fb = cockpit?.needsYou?.firstBatch;
+  const firstReady = fb ? fb.ready > 0 && (fb.ready >= fb.needed || !fb.finding) : !!f?.written;
   // One status for the whole page. "Live" only once emails can really go out: after approval, or with no approval needed.
   type Phase = "card" | "starting" | "paused" | "finding" | "ready" | "live" | "sent" | "stopped";
   const phase: Phase = !state.funded
@@ -170,39 +174,29 @@ export function LaunchStep({ state, draft, market }: { state: OnboardingState; d
               ? f.written || f.state === "done"
                 ? "live"
                 : "finding"
-              : f?.written
+              : firstReady
                 ? "ready"
                 : "finding";
-  const HEAD: Record<Phase, { pill: string; tone: "warm" | "run" | "you" | "go" | "bad"; title: string; sub: string }> = {
-    card: { pill: "Waiting for your card", tone: "warm", title: "Add your card to start", sub: "Add a card to unlock your free credit. Nothing is charged, and your campaign starts straight after." },
-    starting: { pill: "Starting", tone: "run", title: "Starting your campaign", sub: "Saving your audiences, sequence and budget." },
-    paused: { pill: "Needs you", tone: "you", title: "Autopilot is off", sub: "Nothing is found or sent until you turn it on in Settings." },
-    sent: { pill: "Live", tone: "go", title: "Your first emails are out", sub: "Your dashboard shows when each next email goes out, and every reply." },
+  const HEAD: Record<Phase, { title: string; sub: string }> = {
+    card: { title: "Add your card to start", sub: "Add a card to unlock your free credit. Nothing is charged, and your campaign starts straight after." },
+    starting: { title: "Starting your campaign", sub: "Saving your audiences, sequence and budget." },
+    paused: { title: "Sending is switched off", sub: "Nothing is found or sent until you turn on “Run every working day” in Settings, Sending." },
+    sent: { title: "Your first emails are out", sub: "Your dashboard shows when each next email goes out, and every reply." },
     finding: {
-      pill: "Preparing",
-      tone: "run",
       title: "Finding your first people",
       sub: f?.needsApproval
         ? `This takes a few minutes. You can follow it on your dashboard, and we email you when your first ${f.approveCount} people are ready to approve.`
         : "This takes a few minutes. You can follow it on your dashboard, and sending starts by itself once they are ready.",
     },
-    ready: { pill: "Needs you", tone: "you", title: `Your first ${f?.approveCount ?? 20} people are ready`, sub: "Check the people and their emails, then approve. Nothing is sent before you do." },
-    live: { pill: "Live", tone: "go", title: "Your campaign is live", sub: `First emails go out from ${f?.windowStart ?? "09:00"} in each prospect's own morning. Your dashboard shows the exact time of each one, and every reply.` },
+    ready: { title: `Your first ${f?.approveCount ?? 20} people are ready`, sub: "Check the people and their emails, then approve. Nothing is sent before you do." },
+    live: { title: "Your campaign is live", sub: `First emails go out from ${f?.windowStart ?? "09:00"} in each prospect's own morning. Your dashboard shows the exact time of each one, and every reply.` },
     stopped: {
-      pill: "Needs attention",
-      tone: "bad",
       title: "We couldn't find your first people",
       sub: `Your campaign is saved. ${f?.reason === "error" && f.message ? `Finding stopped: ${f.message}` : STOPPED[f?.reason ?? "error"]}`,
     },
   };
   const h = HEAD[phase];
   const head = [h.title, h.sub];
-  const pill = (
-    <span className={`lp-pill ${h.tone}`}>
-      {h.tone === "run" ? <span className="spin" /> : <span className="dot" />}
-      {h.pill}
-    </span>
-  );
   const headAction =
     phase === "stopped" ? (
       <span style={{ display: "inline-flex", marginTop: 18 }}>{retry}</span>
@@ -220,9 +214,9 @@ export function LaunchStep({ state, draft, market }: { state: OnboardingState; d
   return (
     <>
       <header className="an-head lp-head">
-        {pill}
         <h1 className="an-h">{head[0]}</h1>
         <p className="an-p">{head[1]}</p>
+        <StepCta />
         {headAction}
       </header>
       {error ? (
@@ -252,9 +246,9 @@ export function LaunchStep({ state, draft, market }: { state: OnboardingState; d
           </div>
           <div className="lp-stats">
             <div>
-              <small>Emails a day</small>
-              <b>{n0(draft.emails)}</b>
-              <span>{stop ? `${stop.perDay} a day · ${n0(stop.people)} new people a day` : "within your daily budget"}</span>
+              <small>Daily budget</small>
+              <b>{stop ? stop.perDay : "Set"}</b>
+              <span>{stop ? `up to ${n0(stop.emails)} emails a day · replies free` : "within your daily budget"}</span>
             </div>
             <div>
               <small>Balance</small>

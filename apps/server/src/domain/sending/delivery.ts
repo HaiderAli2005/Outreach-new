@@ -52,9 +52,9 @@ export function fromNameFor(mailbox: Pick<Mailbox, "fromNameDefault" | "firstNam
 }
 
 /** Footer under the sign-off: the opt-out line, and the postal address when the customer set one. */
-export function footerFor(settings: Pick<OrgSettings, "senderCompany" | "senderAddress" | "optOutLine" | "language">): string {
+export function footerFor(settings: Pick<OrgSettings, "senderCompany" | "senderAddress" | "optOutLine" | "language">, emailLanguage?: string | null): string {
   const address = settings.senderAddress?.trim() ? [settings.senderCompany, settings.senderAddress].filter(Boolean).join(", ") : "";
-  return [optOutLine(settings), address].filter(Boolean).join("\n");
+  return [optOutLine(settings, emailLanguage), address].filter(Boolean).join("\n");
 }
 
 /** Which written text goes out as sequence email 1 to 4. */
@@ -68,8 +68,9 @@ export function composeStep(contact: Contact, step: number, settings: OrgSetting
   const body = composeBody({
     text: textForStep(contact, step) ?? "",
     senderFirstName: firstNameOf(fromNameFor(mailbox)),
-    footer: footerFor(settings),
+    footer: footerFor(settings, contact.language),
     unsubscribeUrl: step === 1 ? null : unsubscribeUrl(contact.id, domainOf(mailbox.address)),
+    language: contact.language ?? settings.language,
   });
   return { subject, body };
 }

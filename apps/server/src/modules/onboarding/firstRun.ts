@@ -5,9 +5,11 @@ import { logSystem } from "../../domain/systemLog.js";
 import { getSettings } from "../../domain/settings.js";
 import { FIRST_BATCH_SIZE, hasConsent } from "../../domain/launch.js";
 import { sourceForOrg } from "../../jobs/sourcing.js";
+import { growList } from "../../domain/sourcing.js";
+import { growFromMaps } from "../../domain/mapsSourcing.js";
 import { notifyOwners } from "../../domain/sending/health.js";
 import { env } from "../../config/env.js";
-import { personalizeNew, verifyNew } from "../../jobs/send.js";
+import { personalizeNew, pushQueue, verifyNew } from "../../jobs/send.js";
 
 /**
  * The first search after launch. Scheduled finding runs every two hours, so without this a new customer would watch
@@ -167,4 +169,40 @@ export async function firstRunView(orgId: string) {
     consent,
     windowStart: settings.sendingWindowStart,
   };
+}
+
+/**
+ * A campaign made after launch: its first search runs now, in the background, instead of at the next scheduled
+ * round (up to two hours away). The search is free; emails are still looked up only within the daily budget.
+ */
+export function startCampaignSearch(orgId: string, campaignId: string, audienceIds: string[]): void {
+  const p = (async () => {
+    // Each new campaign gets its own first search: two pages (up to 200 people) each, not a shared few in turn.
+    for (const id of audienceIds) await growList(orgId, campaignId, { pages: 2, audienceId: id }).catch((e: Error) => logger.warn({ orgId, err: e.message }, "first campaign search failed"));
+    await growFromMaps(orgId, campaignId);
+  })()
+    .catch((e: Error) => logger.warn({ orgId, err: e.message }, "first campaign search failed"))
+    .finally(() => inFlight.delete(p));
+  inFlight.add(p);
+}
+
+/**
+ * Right after the first people are approved: find, check and write enough people for the rest of today's emails
+ * now, instead of a few each run, then book them across the hours left. Runs in the background.
+ */
+export function startFillToday(orgId: string): void {
+  const p = (async () => {
+    // The people just approved get their send times first, so "to go" fills at once.
+    await pushQueue(orgId);
+    await sourceForOrg(orgId);
+    // Write in passes until nobody is left to write (each pass checks and writes up to a few hundred).
+    for (let pass = 0; pass < 30; pass++) {
+      await verifyNew(orgId);
+      if (!(await personalizeNew(orgId))) break;
+    }
+    await pushQueue(orgId);
+  })()
+    .catch((e: Error) => logger.warn({ orgId, err: e.message }, "filling today after approval failed"))
+    .finally(() => inFlight.delete(p));
+  inFlight.add(p);
 }

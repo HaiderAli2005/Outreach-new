@@ -16,6 +16,14 @@ export interface FetchJsonOptions {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** The provider's own words for a refusal: `message`, a nested `error_details.message`, or an `error` string (HTML stripped). */
+function errorText(data: unknown, status: number): string {
+  if (typeof data !== "object" || !data) return `HTTP ${status}`;
+  const d = data as { message?: unknown; error?: unknown; error_details?: { message?: unknown } };
+  const text = [d.message, d.error_details?.message, typeof d.error === "string" ? d.error : (d.error as { message?: unknown } | undefined)?.message].find((x) => typeof x === "string" && x.trim());
+  return typeof text === "string" ? text.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim().slice(0, 300) : `HTTP ${status}`;
+}
+
 export async function fetchJson<T = unknown>(url: string, opts: FetchJsonOptions = {}): Promise<T> {
   const u = new URL(url);
   for (const [k, v] of Object.entries(opts.query ?? {})) if (v !== undefined && v !== null) u.searchParams.set(k, String(v));
@@ -39,7 +47,7 @@ export async function fetchJson<T = unknown>(url: string, opts: FetchJsonOptions
         /* keep text */
       }
       if (!res.ok) {
-        const msg = typeof data === "object" && data && "message" in data ? String((data as { message: unknown }).message) : `HTTP ${res.status}`;
+        const msg = errorText(data, res.status);
         const err = new HttpError(res.status, msg, data);
         if ((res.status === 429 || res.status >= 500) && attempt < attempts) {
           lastErr = err;

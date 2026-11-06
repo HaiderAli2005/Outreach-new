@@ -197,6 +197,19 @@ export async function daily(orgId: string, dateRaw?: string) {
   return { date, sent, queued, counts: { sent: sent.length, queued: queued.length }, range: { from, to } };
 }
 
+/**
+ * Leave someone out before their first email (from the dashboard's "Up next"). Only people not yet emailed: once
+ * the first email is out, stopping the sequence is the way. Recorded like leaving someone out on review.
+ */
+export async function leaveOut(orgId: string, id: string) {
+  const c = await prisma.contact.findFirst({ where: { id, organizationId: orgId }, select: { id: true, lastContactedAt: true } });
+  if (!c) throw notFound("Lead");
+  if (c.lastContactedAt) throw badRequest("Their first email is already out. Stop their sequence from the lead instead.");
+  await stopSequence(c.id, "manual");
+  await prisma.contact.update({ where: { id: c.id }, data: { status: "REJECTED" } });
+  return { leftOut: true };
+}
+
 export async function markDone(orgId: string, id: string) {
   const c = await prisma.contact.findFirst({ where: { id, organizationId: orgId }, select: { id: true } });
   if (!c) throw notFound("Lead");

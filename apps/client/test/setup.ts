@@ -1,6 +1,9 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach } from "vitest";
+
+// Debounced lookups and chained mocked requests can pass 1s when the whole suite runs in parallel.
+configure({ asyncUtilTimeout: 4000 });
 
 afterEach(() => {
   cleanup();

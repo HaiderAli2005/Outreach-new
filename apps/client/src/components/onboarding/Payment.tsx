@@ -6,7 +6,7 @@ import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-
 import { Icon } from "@/components/ui/Icon";
 import { usd } from "./sizing";
 import { Button, Notice, Skeleton } from "@/components/ui/primitives";
-import { errorMessage, useBillingConfigQuery, usePaymentToConfirmQuery, useStartSetupMutation, useTopupMutation } from "@/store/api";
+import { errorMessage, useBillingConfigQuery, useCardCheckoutMutation, usePaymentToConfirmQuery, useStartSetupMutation, useTopupMutation } from "@/store/api";
 
 const stripeCache = new Map<string, Promise<Stripe | null>>();
 export function stripeFor(key: string) {
@@ -280,6 +280,124 @@ export function CardSetupForm({ orgId, register, onSaved, onBusy, returnPath = "
 }
 
 /**
+ * Saves a card on Stripe's own secure page (Checkout, setup mode) instead of a form inside the app: the customer types
+ * their card on checkout.stripe.com, which people trust, and comes straight back. Nothing is charged. The parent's
+ * main button runs the registered handle, which sends the browser to Stripe; the return lands on `returnPath`, where
+ * the page waits for the free credit exactly as it does after the in-page form.
+ */
+export function StripeCardCheckout({
+  register,
+  onBusy,
+  returnPath = "/onboarding?card=1",
+  cancelPath = "/onboarding?card=cancelled",
+  cancelled = false,
+  credit,
+}: {
+  register: (h: PayHandle | null) => void;
+  onBusy: (b: boolean) => void;
+  returnPath?: string;
+  cancelPath?: string;
+  cancelled?: boolean;
+  /** The free credit the saved card unlocks, e.g. "$10.00". */
+  credit?: string;
+}) {
+  const { data: cfg, isLoading: cfgLoading } = useBillingConfigQuery();
+  const [checkout] = useCardCheckoutMutation();
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    if (!cfg?.enabled) return register(null);
+    register(async () => {
+      onBusy(true);
+      setErr("");
+      try {
+        // A fresh key each time: a session that was completed or abandoned is never handed back.
+        const { url } = await checkout({ returnPath, cancelPath, idempotencyKey: crypto.randomUUID() }).unwrap();
+        window.location.assign(url);
+      } catch (e) {
+        onBusy(false);
+        // A message from our server is written for the customer; anything else (a network or script error) is not.
+        const fromServer = (e as { data?: { error?: { message?: string } } })?.data?.error?.message;
+        setErr(fromServer || "Stripe's secure page couldn't be opened. Check your connection and try again.");
+      }
+    });
+    return () => register(null);
+  }, [cfg?.enabled, checkout, register, onBusy, returnPath, cancelPath]);
+
+  if (cfgLoading) return <Skeleton h={220} r={20} />;
+  if (!cfg?.enabled)
+    return (
+      <Notice tone="bad" title="Payments are not set up on this server">
+        Stripe keys are missing, so a card can&apos;t be added. An administrator needs to add them first.
+      </Notice>
+    );
+  return (
+    <section className="sco" aria-label="Secure checkout with Stripe">
+      <header className="sco-head">
+        <span className="sco-lock" aria-hidden="true">
+          <Icon id="lock" />
+        </span>
+        <div className="sco-title">
+          <b>Secure checkout with Stripe</b>
+          <span>Your card is entered on Stripe and stored by Stripe. Aperture never sees the number.</span>
+        </div>
+        {cfg.publishableKey?.startsWith("pk_test") ? <span className="test">Test mode</span> : null}
+      </header>
+
+      <ol className="sco-steps">
+        <li>
+          <i>1</i>
+          <b>Continue to Stripe</b>
+          <span>Opens checkout.stripe.com</span>
+        </li>
+        <li>
+          <i>2</i>
+          <b>Save your card</b>
+          <span>Nothing is charged today</span>
+        </li>
+        <li>
+          <i>3</i>
+          <b>Back to Aperture</b>
+          <span>{credit ? `${credit} free credit added` : "Free credit added"}</span>
+        </li>
+      </ol>
+
+      {cancelled ? (
+        <p className="sco-note" role="status">
+          <Icon id="alert" />
+          <span>You left Stripe before saving a card, so nothing was saved. Continue whenever you&apos;re ready.</span>
+        </p>
+      ) : null}
+      {err ? (
+        <p className="sco-note bad" role="alert">
+          <Icon id="alert" />
+          <span>{err}</span>
+        </p>
+      ) : null}
+
+      <footer className="sco-foot">
+        <span className="sco-brands" aria-label="Visa, Mastercard and American Express accepted">
+          <span className="b-visa">VISA</span>
+          <span className="b-mc" aria-hidden="true">
+            <i />
+            <i />
+          </span>
+          <span className="b-amex">AMEX</span>
+        </span>
+        <span className="sco-trust">
+          <Icon id="shield" />
+          PCI DSS Level 1 · encrypted end to end
+        </span>
+        <span className="sco-stripe">
+          Powered by <b>stripe</b>
+        </span>
+      </footer>
+      <p className="sco-fine">Your bank may show a temporary $0.00 check that clears on its own. Remove the card any time from Credits.</p>
+    </section>
+  );
+}
+
+/**
  * The separate consent auto-reload needs: an off-session SetupIntent on the saved card, approved in the page (the
  * bank may ask for 3-D Secure). Returns the SetupIntent id the settings change sends to the server to check.
  */
@@ -364,13 +482,17 @@ export function TopupPay({
     );
   return (
     <div className="panel glass paysaved">
-      <div>
+      <span className="paysaved-card" aria-hidden="true">
+        <b>{card!.brand}</b>
+        <span>•••• {card!.last4}</span>
+      </span>
+      <div className="paysaved-t">
         <h3>{dollars} of credit</h3>
-        <p className="muted" style={{ marginTop: 4 }}>
-          Charged once, now, to your {card!.brand} ending {card!.last4}. Unused credit stays in your balance.
+        <p>
+          Charged once to your {card!.brand} ending {card!.last4}. Unused credit stays in your balance.
         </p>
         {err ? (
-          <p className="au-err" role="alert" style={{ marginTop: 8 }}>
+          <p className="au-err" role="alert">
             {err}
           </p>
         ) : null}

@@ -8,6 +8,7 @@ contactsRouter.get("/export", c.exportCsv);
 contactsRouter.post("/import", c.importCsv);
 contactsRouter.get("/:id", c.detail);
 contactsRouter.post("/:id/stop", c.stopSequence);
+contactsRouter.post("/:id/leave-out", c.leaveOut);
 
 export const dailyRouter = Router();
 dailyRouter.get("/", c.daily);

@@ -12,13 +12,13 @@ Aperture owns its own email domains and mailboxes. **Every customer sends from t
 
 | Stage | How long | What it sends |
 |---|---|---|
-| **Aging** | 30 days | Nothing. A brand-new domain that sends straight away looks like spam. |
+| **Aging** | 14 days | Nothing. A brand-new domain that sends straight away looks like spam; this "new domain" penalty fades within the first couple of weeks. |
 | **Warming up** | 29 days | Each mailbox ramps up: **5** a day (days 1–7), **10** (days 8–14), **20** (days 15–21), **30** (day 22 on). |
 | **Active** | as long as it stays healthy | **30** a day per mailbox. A domain has up to 3 mailboxes, so at most **90** a day per domain. |
 | **Burned** | until retired | No new cold email. It only keeps answering conversations it already has. |
 | **Retired** | — | Switched off. |
 
-From buying a domain to full volume takes about **9 weeks** (30 + 29 days, plus a little margin). That delay is why the page is always thinking ahead about **spare domains**.
+From buying a domain to full volume takes about **6 to 7 weeks** (14 + 29 = 43 days; the restock maths rounds up to 7 weeks). That delay is why the page is always thinking ahead about **spare domains**.
 
 ### When does a domain burn?
 
@@ -111,17 +111,44 @@ The four cards under it:
 - **One domain sends at most 90 a day:** so capacity only grows when new domains go live.
 
 **Last 30 days chart**
-- **Gold area:** what was sent each day.
-- **Dashed line:** what the pool could send.
-- **Dotted line:** what customers asked for.
+- **Sent:** the filled area, what was sent each day.
+- **Capacity:** a line for what the pool could send.
+- **Asked for:** a line for what customers asked for.
 
-The gap between the two lines is room for new customers.
+The gap between the Capacity and Asked-for lines is room for new customers.
+
+**What the pool is made of:** every mailbox by state: Sending, Warming up, Setting up (bought but not connected yet), Burned (replies only), Retired. Below it, **Domains by stage** counts how many domains are aging, warming, active, burned and retired. It sits under Capacity because what the pool is made of decides what it can send.
 
 ### 4.3 Burned
 
-**What the pool is made of:** every mailbox by state: Sending, Warming up, Setting up (bought but not connected yet), Burned (replies only), Retired.
+This section answers two questions: **what is on the way to burning**, and **what has burned**. If nothing has burned in the last 12 weeks, the second part is one sentence saying so instead of empty figures and charts.
 
-**What burned mailboxes still carry**
+**On the way to burning (always shown):** every active domain with a worrying **risk score**, from **0 (safe) to 1**. It ranks which domains to check first. It is **not** a forecast and never says "burns in a week".
+
+How the score is built:
+- **50%:** this week's bad rate (full marks at 5%);
+- **30%:** how fast it's rising compared with the last 30 days (full marks at +2 points);
+- **20%:** complaints (full marks at 0.3%).
+
+> **Example.** This week 2.5% bad, up 1 point on the month, 0.15% complaints.
+> 0.5 × (2.5 ÷ 5) + 0.3 × (1 ÷ 2) + 0.2 × (0.15 ÷ 0.3) = 0.25 + 0.15 + 0.10 = **0.50**, which is in the **watch** band.
+
+- **Watch:** 0.4 to 0.7.
+- **At risk:** 0.7 or more. Check these first.
+- Domains with fewer than 200 emails in 30 days are not scored yet.
+
+**Burned domains still carrying conversations:** one row per burned domain, with:
+- the date it burned;
+- how many of its mailboxes are burned;
+- **live conversations** (people who replied in the last 30 days);
+- **follow-ups still going** (people still in their sequence);
+- how many **customers** those belong to.
+
+"Mailbox only, domain still sending" means one mailbox burned but its domain is still active. These conversations are never lost: a burned mailbox keeps answering the people already talking to it.
+
+> **Example.** oldport.org burned on 5 Oct. Its 3 mailboxes still carry 7 live conversations and 12 follow-ups for 4 customers. Those people keep hearing from the same mailbox until their conversations end.
+
+**What burned mailboxes still carry** (totals)
 - **Capacity lost, a day.**
 - **We still pay a month:** burned mailboxes × their monthly price, plus burned domains × yearly price ÷ 12.
 
@@ -134,7 +161,6 @@ The gap between the two lines is room for new customers.
 - **Failed the seed test:** our own test inbox couldn't confirm its signature.
 - **Other.**
 
-Below it, **Domains by stage** counts how many domains are aging, warming, active, burned and retired.
 
 **Domains burned per week**
 - **Burn rate, 30 days:** domains burned ÷ every domain that was sending in that period (still active + burned).
@@ -153,21 +179,7 @@ Below it, **Domains by stage** counts how many domains are aging, warming, activ
 - **3% warmup holds:** warming mailboxes stop moving up the ramp until they're cleaner.
 - **5% a domain burns:** the rate at which a single domain burns.
 
-> ⚠️ Each domain is judged on **its own** last 200 emails. The pool average can be 1% while one domain is at 8% and burns.
-
-**Risk by domain:** a score from **0 (safe) to 1**. It ranks what to look at first. It is **not** a forecast and does not say "burns in a week".
-
-How it's built:
-- **50%:** this week's bad rate (full marks at 5%);
-- **30%:** how fast it's rising compared with the last 30 days (full marks at +2 points);
-- **20%:** complaints (full marks at 0.3%).
-
-> **Example.** This week 2.5% bad, up 1 point on the month, 0.15% complaints.
-> 0.5 × (2.5 ÷ 5) + 0.3 × (1 ÷ 2) + 0.2 × (0.15 ÷ 0.3) = 0.25 + 0.15 + 0.10 = **0.50**, which is in the **watch** band.
-
-- **Watch:** 0.4 to 0.7.
-- **At risk:** 0.7 or more.
-- Domains with fewer than 200 emails in 30 days are not scored yet.
+> ⚠️ Each domain is judged on **its own** last 200 emails. The pool average can be 1% while one domain is at 8% and burns. Which domains are close is shown under **Burned → On the way to burning**.
 
 ### 4.5 Spare domains and restock
 
@@ -187,7 +199,7 @@ The **Restock panel** has two halves.
 | Reason | Rule | Example |
 |---|---|---|
 | **Below the minimum** | You have fewer spares than your target. | Minimum 15, you have 4: need **11**. |
-| **To replace burn** | At the current burn, the spares run out before a new domain could be ready (~9 weeks). Doesn't apply if nothing has burned. | 4 spares at 0.5 burned a week last 8 weeks. That's less than 9, so buy (9 − 8) × 0.5, rounded up: **1**. |
+| **To replace burn** | At the current burn, the spares run out before a new domain could be ready (~7 weeks). Doesn't apply if nothing has burned. | 4 spares at 1 burned a week last 4 weeks. That's less than 7, so buy (7 − 4) × 1 = **3**. |
 | **For demand** | Customers want more than the pool can send, times your demand margin. | Margin 1.2: 700 × 1.2 = 840 needed. With 960 capacity that's fine. With only 600, you're 240 short; 240 ÷ 30 = 8 mailboxes = 3 domains, so **3**. |
 
 > The biggest need is 11, but "Most domains per restock" is 5, so the answer is **Buy 5**. The rest comes in the next request.

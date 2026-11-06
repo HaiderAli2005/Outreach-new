@@ -4,6 +4,7 @@ import { brandProfileOf } from "./settings.js";
 import { businessProfileOf, profileForPrompt } from "./businessProfile.js";
 import { sequenceForPrompt, type Touch } from "./campaignSequence.js";
 import { SENDER_FIRST_NAME } from "./sending/message.js";
+import { languageName } from "./languages.js";
 import { BANNED_PHRASES, checkFirstTouch, checkFollowUp, checkSubject, unsupportedClaims, type ClaimCorpus } from "./emailRules.js";
 
 /**
@@ -110,11 +111,11 @@ export function fromTemplate(touches: Touch[], contact: Pick<Contact, "firstName
 }
 
 /** Every rule a written sequence breaks. Empty means it may be used. */
-export function sequenceProblems(seq: Omit<WrittenSequence, "status">, contact: Pick<Contact, "company" | "firstName">, corpus: ClaimCorpus): string[] {
+export function sequenceProblems(seq: Omit<WrittenSequence, "status">, contact: Pick<Contact, "company" | "firstName">, corpus: ClaimCorpus, language?: string | null): string[] {
   const problems: string[] = [];
   const subj = checkSubject(seq.subject, contact);
   if (subj) problems.push(`subject ${subj}`);
-  const first = checkFirstTouch(seq.body);
+  const first = checkFirstTouch(seq.body, language, [contact.company]);
   if (first) problems.push(first);
   if (!seq.body.includes(SENDER_FIRST_NAME)) problems.push(`the first email must introduce the sender as "${SENDER_FIRST_NAME}"`);
   for (const [name, text] of [["follow-up 2", seq.followup2], ["follow-up 3", seq.followup3], ["follow-up 4", seq.followup4]] as const) {
@@ -123,18 +124,19 @@ export function sequenceProblems(seq: Omit<WrittenSequence, "status">, contact: 
     if (/https?:\/\/|www\./i.test(text)) problems.push(`${name}: no links`);
   }
   for (const text of [seq.body, seq.followup2, seq.followup3, seq.followup4]) {
-    const claims = unsupportedClaims(text, corpus);
+    const claims = unsupportedClaims(text, corpus, language);
     if (claims.length) problems.push(`unsupported claim or name: ${claims.join(", ")}`);
   }
   return [...new Set(problems)];
 }
 
 /** What the writer may use: the research, and the customer's own facts with their sources. */
-export function corpusOf(contact: Contact, settings: OrgSettings, companyDescription?: string | null): ClaimCorpus {
+export function corpusOf(contact: Contact, settings: OrgSettings, companyDescription?: string | null, sequence?: Touch[] | null): ClaimCorpus {
   const proof = Array.isArray(settings.proofPoints) ? (settings.proofPoints as { claim?: string; source?: string }[]).filter((p) => p?.claim && p?.source) : [];
   return {
     prospect: [contact.firstName, contact.lastName, contact.fullName, contact.title, contact.company, contact.industry, contact.website, contact.location, contact.city, contact.country, contact.headline, companyDescription].filter(Boolean).join("\n"),
-    customer: [settings.senderCompany, settings.valueProp, JSON.stringify(settings.brandProfile ?? {}), ...proof.map((p) => p.claim)].filter(Boolean).join("\n"),
+    // The customer's own approved sequence is their words: nothing in it is an unsupported claim.
+    customer: [settings.senderCompany, settings.valueProp, JSON.stringify(settings.brandProfile ?? {}), ...proof.map((p) => p.claim), ...(sequence ?? []).map((t) => `${t.subject ?? ""}\n${t.body}`)].filter(Boolean).join("\n"),
   };
 }
 
@@ -155,7 +157,7 @@ function buildPrompt(contact: Contact, settings: OrgSettings, opts: { marketBrie
   ]
     .filter(Boolean)
     .join("\n");
-  const language = opts.language === "sv" ? "Swedish" : opts.language === "en" ? "English" : opts.language;
+  const language = languageName(opts.language);
   return `Write a cold email sequence for ONE prospect on behalf of ${settings.senderCompany || brand.company || "our company"}.
 
 WHAT WE SELL (the only services you may mention; never offer anything beyond this):
@@ -167,8 +169,8 @@ ${proof.length ? proof.map((p) => `- ${p.claim} (source: ${p.source})`).join("\n
 THE PROSPECT (everything you know; claim nothing about them beyond this):
 ${facts || "(very little known: keep the observation to their company and role)"}
 
-LANGUAGE: ${language}.
-${opts.sequence ? `\nTHE APPROVED SEQUENCE (the customer wrote and approved it; follow it closely):
+LANGUAGE: ${language}. Write the subject and all four emails entirely in ${language}, the way a native business writer there would${opts.language === "en" ? "" : ", in the polite form used with someone you have not met"}. Use the question mark of the language (？ in Chinese and Japanese).
+${opts.sequence ? `\nTHE APPROVED SEQUENCE (the customer wrote and approved it; follow it closely${opts.language === "en" ? "" : `. If it is not in ${language}, write it in ${language}: same structure, offer, proof and question, natural wording, not a word-for-word translation`}):
 ${sequenceForPrompt(opts.sequence)}
 
 Write THIS prospect's version of it. Keep each email's structure, offer, proof, question and tone. Use the subject as written. Replace {{first_name}} and {{company}} with this prospect's details, and rewrite only the first paragraph's observation so it is true of THIS prospect, from the facts above. Keep ${SENDER_FIRST_NAME} exactly as written.
@@ -228,7 +230,7 @@ export async function personalizeContact(
   const ai = getAi();
   if (!ai) return { ...fb, status: "fallback" };
   const language = opts.language || settings.language;
-  const corpus = corpusOf(contact, settings, opts.companyDescription);
+  const corpus = corpusOf(contact, settings, opts.companyDescription, opts.sequence);
   let feedback: string[] = [];
   for (let attempt = 0; attempt < 2; attempt++) {
     let out: Raw | null = null;
@@ -245,7 +247,7 @@ export async function personalizeContact(
       followup3: lintEmail(String(out.followup3 ?? "")),
       followup4: lintEmail(String(out.followup4 ?? "")),
     };
-    feedback = sequenceProblems(seq, contact, corpus);
+    feedback = sequenceProblems(seq, contact, corpus, language);
     if (!feedback.length) feedback = (await factCheck(seq.body, corpus, contact.organizationId)).map((x) => `not supported by the facts: ${x}`);
     if (!feedback.length) return { ...seq, status: "done" };
   }

@@ -50,7 +50,7 @@ export async function closeFilledReorders(): Promise<number> {
   return closed;
 }
 
-/** A new pool domain, once its DNS is in place, starts its quiet month (never earlier than planned). */
+/** A new pool domain, once its DNS is in place, starts its quiet aging period (never earlier than planned). */
 export async function startAging(domainId: string, now = new Date()) {
   const d = await prisma.sendingDomain.findUniqueOrThrow({ where: { id: domainId }, select: { agingUntil: true } });
   const earliest = agingUntilFrom(now);
@@ -58,7 +58,7 @@ export async function startAging(domainId: string, now = new Date()) {
 }
 
 /**
- * A domain that arrived already warmed skips the quiet month and the ladder: once its DNS passes it is ACTIVE and its
+ * A domain that arrived already warmed skips the quiet aging period and the ladder: once its DNS passes it is ACTIVE and its
  * signed-in mailboxes send at full capacity straight away.
  */
 export async function activateWarmed(domainId: string, now = new Date(), opts: { includeWarming?: boolean } = {}): Promise<number> {
@@ -70,12 +70,21 @@ export async function activateWarmed(domainId: string, now = new Date(), opts: {
   return r.count;
 }
 
-/** SPF, DKIM and DMARC now resolve for a REGISTERED domain: a warmed one goes live, a new one starts its quiet month. */
+/**
+ * SPF, DKIM and DMARC now resolve for a REGISTERED domain: a warmed one goes live, a new one starts its quiet aging
+ * period, and one the supplier warms waits in AGING until that warmup is done (agingUntil is set from when the
+ * supplier's warmup actually started, by inboxkit/sync.ts).
+ */
 export async function onDnsReady(domainId: string, now = new Date()): Promise<"active" | "aging"> {
-  const d = await prisma.sendingDomain.findUniqueOrThrow({ where: { id: domainId }, select: { prewarmed: true } });
+  const d = await prisma.sendingDomain.findUniqueOrThrow({ where: { id: domainId }, select: { prewarmed: true, externalWarmup: true, supplierWarmupAt: true, warmupTargetDays: true } });
   if (d.prewarmed) {
     await activateWarmed(domainId, now);
     return "active";
+  }
+  if (d.externalWarmup) {
+    const until = d.supplierWarmupAt ? new Date(d.supplierWarmupAt.getTime() + (d.warmupTargetDays ?? 28) * 86_400_000) : null;
+    await prisma.sendingDomain.update({ where: { id: domainId }, data: { status: "AGING", agingUntil: until } });
+    return "aging";
   }
   await startAging(domainId, now);
   return "aging";

@@ -39,7 +39,9 @@ describe("cockpit before the first emails", () => {
     const { t, campaign } = await launched();
     let c = await cockpit(t.auth);
     expect(c.engine.state).toBe("preparing");
-    expect(c.needsYou.firstBatch).toMatchObject({ ready: 0, needed: 20, problem: null });
+    // The search finished and nobody is written or being written: a dead end, said plainly, not "a few minutes".
+    expect(c.needsYou.firstBatch).toMatchObject({ ready: 0, needed: 20, finding: false });
+    expect(c.needsYou.firstBatch.problem).toMatch(/nobody it found fits/);
 
     await makeContact(t.orgId, { ...sendable(campaign.id), audienceId: "g1", personalizationStatus: "done", approvedAt: null, approvalSource: null });
     await makeContact(t.orgId, { ...sendable(campaign.id), audienceId: "g1", personalizationStatus: "done", approvedAt: null, approvalSource: null });
@@ -54,6 +56,20 @@ describe("cockpit before the first emails", () => {
     expect(c.engine.state).not.toBe("approval");
     // Found people after the first batch still wait for a person.
     expect(c.needsYou.awaitingApproval).toBe(2);
+  });
+
+  it("doesn't ask for approval at 1 of 20 while the first search is still writing; asks once it's done", async () => {
+    const { t, campaign } = await launched();
+    await prisma.onboarding.update({ where: { organizationId: t.orgId }, data: { firstRunFinishedAt: null } });
+    await makeContact(t.orgId, { ...sendable(campaign.id), audienceId: "g1", personalizationStatus: "done", approvedAt: null, approvalSource: null });
+    let c = await cockpit(t.auth);
+    expect(c.needsYou.firstBatch).toMatchObject({ ready: 1, needed: 20, finding: true });
+    expect(c.engine.state).toBe("preparing");
+
+    await prisma.onboarding.update({ where: { organizationId: t.orgId }, data: { firstRunFinishedAt: new Date() } });
+    c = await cockpit(t.auth);
+    expect(c.needsYou.firstBatch).toMatchObject({ ready: 1, finding: false });
+    expect(c.engine.state).toBe("approval");
   });
 
   it("says why the first search stopped", async () => {
@@ -97,6 +113,32 @@ describe("performance", () => {
     expect(month.totals.sent).toBe(4);
   });
 
+  it("shows today, all time, and one campaign at a time", async () => {
+    const { t, campaign } = await launched({ approved: true });
+    const a = await makeContact(t.orgId, { ...sendable(campaign.id), status: "CONTACTED", audienceId: "g1" });
+    const b = await makeContact(t.orgId, { ...sendable(campaign.id), status: "CONTACTED", audienceId: "g2" });
+    const send = (contactId: string, at: Date) => prisma.send.create({ data: { organizationId: t.orgId, campaignId: campaign.id, contactId, isFirstTouch: true, step: 1, status: "DELIVERED", priceCharged: 40n, sentAt: at } });
+    await send(a.id, new Date());
+    await send(b.id, new Date());
+    await send(a.id, new Date(Date.now() - 40 * DAY));
+
+    const get = async (q: string) => (await api().get(`/api/v1/dashboard/performance?${q}`).set(t.auth).expect(200)).body.data;
+    const today = await get("period=today");
+    expect(today).toMatchObject({ period: "today", days: 1 });
+    expect(today.series).toHaveLength(1);
+    expect(today.totals.sent).toBe(2);
+    // All time runs from the first email ever sent and has nothing before it to compare with.
+    const all = await get("period=all");
+    expect(all.days).toBeGreaterThanOrEqual(40);
+    expect(all.totals.sent).toBe(3);
+    expect(all.previous.sent).toBe(0);
+    // One audience at a time; the campaign list itself is never narrowed, so the picker always shows every choice.
+    const one = await get("period=all&campaign=g1");
+    expect(one.totals.sent).toBe(2);
+    expect(one.campaign).toBe("g1");
+    expect(one.audiences.map((x: { id: string }) => x.id)).toEqual(expect.arrayContaining(["g1", "g2"]));
+  });
+
   it("is per workspace", async () => {
     const { t, campaign } = await launched({ approved: true });
     const other = await createTenant();
@@ -105,5 +147,47 @@ describe("performance", () => {
     const p = (await api().get("/api/v1/dashboard/performance").set(other.auth).expect(200)).body.data;
     expect(p.totals.sent).toBe(0);
     expect(p.audiences).toEqual([]);
+  });
+});
+
+describe("campaign workspace", () => {
+  beforeEach(resetDb);
+
+  it("lists campaigns for the sidebar and opens one with its brief, leads, progress and dated story", async () => {
+    const { t, campaign } = await launched({ approved: true });
+    await prisma.company.create({ data: { organizationId: t.orgId, domain: "acme.io", name: "Acme", employees: 30, country: "Sweden" } });
+    const a = await makeContact(t.orgId, { ...sendable(campaign.id), status: "REPLIED", audienceId: "g1", companyDomain: "acme.io", country: "Sweden", verifyResult: "ok", repliedAt: new Date(), firstContactedAt: new Date(), intent: "INTERESTED", fullName: "Ada Lind" });
+    await makeContact(t.orgId, { ...sendable(campaign.id), status: "CONTACTED", audienceId: "g1", companyDomain: "acme.io", verifyResult: "invalid" });
+    await makeContact(t.orgId, { ...sendable(campaign.id), audienceId: "g2" });
+    await prisma.send.create({ data: { organizationId: t.orgId, campaignId: campaign.id, contactId: a.id, isFirstTouch: true, step: 1, status: "DELIVERED", priceCharged: 40n, sentAt: new Date() } });
+
+    const nav = (await api().get("/api/v1/dashboard/campaigns").set(t.auth).expect(200)).body.data;
+    expect(nav).toEqual([expect.objectContaining({ id: "g1", name: "Founders", state: "on" }), expect.objectContaining({ id: "g2", state: "off" })]);
+
+    const w = (await api().get("/api/v1/dashboard/campaigns/g1").set(t.auth).expect(200)).body.data;
+    expect(w).toMatchObject({ id: "g1", name: "Founders", on: true });
+    expect(w.progress).toMatchObject({ found: 2, canEmail: 1, noAddress: 1, checking: 0, emailed: 1, replied: 1, hot: 1 });
+    expect(w.progress.steps[0]).toEqual({ step: 1, sent: 1 });
+    expect(w.breakdown.sizes).toEqual([["11–50", 2]]);
+    expect(w.companies[0]).toMatchObject({ domain: "acme.io", name: "Acme", people: 2, employees: 30 });
+    expect(w.people.find((p: { id: string }) => p.id === a.id)).toMatchObject({ email: "ok" });
+    expect(w.timeline.map((e: { kind: string }) => e.kind)).toEqual(expect.arrayContaining(["found", "sent", "reply", "launch"]));
+    expect(w.timeline.find((e: { kind: string }) => e.kind === "reply").text).toMatch(/^Ada Lind at .+ replied$/);
+
+    await api().get("/api/v1/dashboard/campaigns/nope").set(t.auth).expect(404);
+  });
+});
+
+describe("when sending pauses", () => {
+  it("names the first sending day the balance no longer covers, skipping days that don't send", async () => {
+    const { runsOutOn } = await import("../src/modules/dashboard/dashboard.service.js");
+    const monday = new Date("2026-11-02T10:00:00Z");
+    const weekdays = [1, 2, 3, 4, 5];
+    expect(runsOutOn(0, "UTC", weekdays, monday)).toBe("today");
+    expect(runsOutOn(1, "UTC", weekdays, monday)).toBe("tomorrow");
+    expect(runsOutOn(3, "UTC", weekdays, monday)).toBe("Thursday");
+    // Friday covered, the weekend doesn't send: it pauses on Monday the 9th.
+    expect(runsOutOn(5, "UTC", weekdays, monday)).toBe("Mon, Nov 9");
+    expect(runsOutOn(null, "UTC", weekdays, monday)).toBeNull();
   });
 });

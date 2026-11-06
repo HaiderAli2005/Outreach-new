@@ -285,6 +285,29 @@ export async function fetchSiteText(domain: string, maxChars = 6000): Promise<{ 
   return { title: null, description: null, text: "" };
 }
 
+/** A home page's own language tag and a sample of its words, for working out what language to write to them in. */
+export interface LanguageSample {
+  lang: string | null;
+  text: string;
+}
+type LanguageReader = (domain: string) => Promise<LanguageSample | null>;
+const readLanguageLive: LanguageReader = async (domain) => {
+  for (const url of [`https://${domain}`, `https://www.${domain}`]) {
+    const page = await readPage(url, 4000, 6_000);
+    if (page) return { lang: page.lang, text: page.text };
+  }
+  return null;
+};
+let languageReader: LanguageReader = readLanguageLive;
+
+export function readSiteLanguage(domain: string): Promise<LanguageSample | null> {
+  return languageReader(domain).catch(() => null);
+}
+
+export function setSiteLanguageReader(r: LanguageReader | null): void {
+  languageReader = r ?? readLanguageLive;
+}
+
 const SUBPAGES = ["/about", "/services", "/products", "/solutions", "/pricing", "/industries", "/customers", "/case-studies", "/testimonials", "/contact"];
 
 export interface SitePage {
@@ -419,4 +442,38 @@ export function fetchSitePages(domain: string, hooks?: SiteHooks) {
 
 export function setSiteReader(r: SiteReader | null): void {
   siteReader = r ?? ((d, h) => readSitePages(d, h));
+}
+
+/**
+ * The email addresses a business publishes on its own site: the home page and the usual contact pages, on its own
+ * domain only (never a gmail address or someone else's). Used for Google Maps businesses with no named person.
+ */
+type EmailReader = (domain: string) => Promise<string[]>;
+const CONTACT_PATHS = ["", "/contact", "/contact-us", "/contactus", "/en/contact", "/ar/contact", "/about"];
+const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
+const readEmailsLive: EmailReader = async (domain) => {
+  const found = new Set<string>();
+  const mine = (e: string) => {
+    const host = e.split("@")[1] ?? "";
+    return host === domain || host.endsWith(`.${domain}`);
+  };
+  for (const path of CONTACT_PATHS) {
+    const page = (await readPage(`https://${domain}${path}`, 20_000, 8_000)) ?? (path ? null : await readPage(`https://www.${domain}`, 20_000, 8_000));
+    if (!page) continue;
+    for (const raw of `${page.body} ${page.text}`.match(EMAIL_RE) ?? []) {
+      const e = raw.toLowerCase().replace(/^mailto:/, "");
+      if (mine(e) && !/\.(png|jpe?g|gif|webp|svg)$/.test(e)) found.add(e);
+    }
+    if (found.size >= 3) break;
+  }
+  return [...found];
+};
+let emailReader: EmailReader = readEmailsLive;
+
+export function readSiteEmails(domain: string): Promise<string[]> {
+  return emailReader(domain);
+}
+
+export function setSiteEmailReader(r: EmailReader | null): void {
+  emailReader = r ?? readEmailsLive;
 }

@@ -144,6 +144,7 @@ model Organization {
   credentials    IntegrationCredential[]
   campaigns      Campaign[]
   contacts       Contact[]
+  prospects      Prospect[]
   companies      Company[]
   messages       Message[]
   blocklist      BlocklistEntry[]
@@ -154,6 +155,7 @@ model Organization {
   usage          UsageCounter[]
   sendingDomains SendingDomain[]
   mailboxes      Mailbox[]
+  mapsPlaces     MapsPlace[]
 }
 
 model Membership {
@@ -362,10 +364,19 @@ model SendingDomain {
   /// Paused by an authentication failure or a provider block on our side. Takes no new people until cleared.
   pausedAt           DateTime?           @map("paused_at")
   pauseReason        String?             @map("pause_reason")
+  /// Who supplied it: null when an operator added it by hand, "inboxkit" when Aperture ordered it through InboxKit.
+  supplier           String?
+  /// Warmed on the supplier's own warmup network first (it sends no cold email meanwhile), then the ladder from 10 a day.
+  externalWarmup     Boolean             @default(false)
+  /// Days of supplier warmup before it may join the ladder, and when that warmup actually started.
+  warmupTargetDays   Int?
+  supplierWarmupAt   DateTime?
+  supplierSyncedAt   DateTime?
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   organization       Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   mailboxes          Mailbox[]
+  supplierItem       SupplierOrderItem?
   sends              Send[]
   healthDaily        DomainHealthDaily[]
 
@@ -436,6 +447,16 @@ model Mailbox {
   degradedAt      DateTime?
   degradeReason   String?
   retiredAt       DateTime?
+  /// The supplier's warmup, read from InboxKit: subscription status, health (excellent, good, warning, critical,
+  /// unknown), score and inbox rate (0-100), and the supplier's own warmup day.
+  supplierWarmupStatus String?
+  warmupHealth    String?
+  warmupScore     Decimal?         @db.Decimal(5, 2)
+  warmupInboxRate Decimal?         @db.Decimal(5, 2)
+  supplierWarmupDay Int?
+  supplierSyncedAt DateTime?
+  /// When Aperture asked the supplier to cancel this mailbox (after it retired), so it stops being billed.
+  supplierCancelRequestedAt DateTime?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   organization    Organization?    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -465,6 +486,8 @@ model OrgSettings {
   sendingWindowStart           String       @default("09:00")
   sendingWindowEnd             String       @default("17:00")
   language                     String       @default("en")
+  /// Write to each prospect in their own website's language (else their country's); `language` is then the fallback.
+  matchProspectLanguage        Boolean      @default(true)
   personalizationEnabled       Boolean      @default(true)
   requireVerifiedEmail         Boolean      @default(true)
   monthlyCreditCap             Int          @default(0)
@@ -520,6 +543,7 @@ enum IntegrationProvider {
   APOLLO
   MILLIONVERIFIER
   SLACK_WEBHOOK
+  GOOGLE_PLACES
 }
 
 model IntegrationCredential {
@@ -564,6 +588,7 @@ model Campaign {
   updatedAt      DateTime       @updatedAt
   organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contacts       Contact[]
+  prospects      Prospect[]
 
   @@index([organizationId, status])
 }
@@ -699,6 +724,8 @@ model Contact {
   nextTouchAt           DateTime?
   /// The prospect's IANA time zone, from their location when known.
   timezone              String?
+  /// The language this person is written to in: their company website's main language, else their country's, else the workspace's. Set before their emails are written.
+  language              String?
   /// Set when this person may be emailed. Null = never sent, whatever the batching settings.
   approvedAt            DateTime?
   /// "upload", "review" or "auto".
@@ -1251,3 +1278,165 @@ model CostSettings {
   updatedAt          DateTime @updatedAt
 }
 
+
+// ─── Supplier ordering (InboxKit) ───────────────────────────────────────────
+
+/// How Aperture orders domains and mailboxes through InboxKit. One row, id "default". The API key is in the secret
+/// store ("inboxkit:api-key"), never here.
+model InboxKitSettings {
+  id                  String   @id @default("default")
+  workspaceUid        String?
+  workspaceName       String?
+  /// The registrant contact InboxKit registers every domain with: first_name, last_name, email, phone, organization,
+  /// address_line1, address_line2, city, state, country, postal_code.
+  contact             Json?
+  /// Where each new domain forwards in a browser (InboxKit requires one per domain).
+  redirectUrl         String?
+  /// GOOGLE or MICROSOFT. Aperture signs in to both over SMTP and IMAP with the app password InboxKit issues.
+  platform            String   @default("GOOGLE")
+  /// Days of InboxKit warmup before a new domain joins the ladder.
+  warmupDays          Int      @default(28)
+  /// Keep InboxKit warmup running once a mailbox sends real email (recommended) or cancel it at that point.
+  keepWarmupAfterLive Boolean  @default(true)
+  /// Never register a domain that costs more than this a year.
+  maxDomainPriceUsd   Decimal  @default(20.00) @db.Decimal(8, 2)
+  updatedById         String?
+  updatedAt           DateTime @updatedAt
+}
+
+enum SupplierOrderStatus {
+  /// Names checked and priced, waiting for an operator to confirm. Expires after 30 minutes.
+  QUOTED
+  /// Confirmed: placed in batches within the pool's per-batch and per-day limits.
+  SCHEDULED
+  /// The supplier's wallet could not cover the next batch. Retried every hour.
+  WAITING_FOR_FUNDS
+  DONE
+  /// Finished with some domains rejected by the supplier.
+  PARTIAL
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+enum SupplierOrderItemStatus {
+  PENDING
+  /// Sent to the supplier with no clear answer yet (a timeout); the sync adopts it if it shows up, or retries it.
+  PLACING
+  PLACED
+  REJECTED
+}
+
+/// "Add new domains": an operator asks for N domains, confirms the price, and Aperture orders them through InboxKit.
+model SupplierOrder {
+  id            String              @id @default(cuid())
+  supplier      String              @default("inboxkit")
+  status        SupplierOrderStatus @default(QUOTED)
+  platform      String              @default("GOOGLE")
+  region        String              @default("global")
+  locale        String              @default("en")
+  warmup        Boolean             @default(true)
+  requested     Int
+  /// What the operator confirmed: unit prices and totals at quote time.
+  estimate      Json
+  lastError     String?
+  nextRunAt     DateTime?
+  expiresAt     DateTime
+  createdById   String
+  confirmedById String?
+  confirmedAt   DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  items         SupplierOrderItem[]
+
+  @@index([status, nextRunAt])
+}
+
+/// One domain in an order, with the 3 mailboxes planned on it.
+model SupplierOrderItem {
+  id              String                  @id @default(cuid())
+  orderId         String
+  domainName      String
+  priceUsd        Decimal?                @db.Decimal(8, 2)
+  /// [{ email, firstName, lastName }]
+  mailboxes       Json
+  status          SupplierOrderItemStatus @default(PENDING)
+  externalOrderId String?
+  message         String?
+  attempts        Int                     @default(0)
+  placingAt       DateTime?
+  placedAt        DateTime?
+  sendingDomainId String?                 @unique
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  order           SupplierOrder           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sendingDomain   SendingDomain?          @relation(fields: [sendingDomainId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, status])
+  @@index([domainName])
+}
+
+enum ProspectStatus {
+  WAITING
+  PULLED
+  SKIPPED
+}
+
+/// The campaign's audience list: everyone the lead search matched, saved without an email (searching is free).
+/// Emails are looked up just in time, only for the best-fit people the daily budget is about to email; a pulled
+/// prospect becomes a Contact. This is what lets a campaign hold thousands of people while paying for few.
+model Prospect {
+  id             String         @id @default(cuid())
+  organizationId String
+  campaignId     String
+  audienceId     String?
+  apolloId       String
+  fullName       String?
+  title          String?
+  seniority      String?
+  company        String?
+  companyDomain  String?
+  country        String?
+  employees      Int?
+  fitScore       Int            @default(0)
+  status         ProspectStatus @default(WAITING)
+  /// Where they were found: "apollo" (the lead search), "maps" (a Google Maps business, person from Apollo) or
+  /// "maps-site" (a Google Maps business with no named person: the address its own website publishes).
+  source         String         @default("apollo")
+  /// Only for "maps-site": the address the business publishes. Everyone else's email is looked up when pulled.
+  email          String?
+  /// The Google place this came from. The only Google field kept for good (Maps Platform terms).
+  placeId        String?
+  city           String?
+  pulledAt       DateTime?
+  createdAt      DateTime       @default(now())
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign       Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, apolloId])
+  @@index([organizationId, campaignId, status, fitScore])
+}
+
+/// A business found on Google Maps for a campaign, and what came of it. Kept so a place is looked at once.
+/// Google's terms allow keeping the place id; its name and address are cleared after 30 days (name, address).
+model MapsPlace {
+  id             String   @id @default(cuid())
+  organizationId String
+  campaignId     String
+  audienceId     String?
+  placeId        String
+  domain         String?
+  name           String?
+  address        String?
+  city           String?
+  /// matched (people found on Apollo), site-email (the address the website publishes), nobody, no-site, skipped
+  status         String
+  people         Int      @default(0)
+  query          String?
+  createdAt      DateTime @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, placeId])
+  @@index([organizationId, domain])
+  @@index([createdAt])
+}

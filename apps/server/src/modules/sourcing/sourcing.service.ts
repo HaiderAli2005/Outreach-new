@@ -47,3 +47,40 @@ export async function usage(orgId: string) {
   const days = await prisma.usageCounter.findMany({ where: { organizationId: orgId }, orderBy: { day: "desc" }, take: 31 });
   return { pacing: await creditPacing(orgId, s), days };
 }
+
+/**
+ * The audience list as a funnel, with one page of the people in it: everyone the free search saved, how many have
+ * had their email looked up, how many of those have one that works (they are the Leads), and how many still wait.
+ */
+export async function audience(orgId: string, opts: { page: number; status?: "WAITING" | "PULLED"; q?: string }) {
+  const pageSize = 50;
+  const where = {
+    organizationId: orgId,
+    ...(opts.status ? { status: opts.status } : { status: { not: "SKIPPED" as const } }),
+    ...(opts.q ? { OR: [{ fullName: { contains: opts.q, mode: "insensitive" as const } }, { company: { contains: opts.q, mode: "insensitive" as const } }, { title: { contains: opts.q, mode: "insensitive" as const } }] } : {}),
+  };
+  const [found, lookedUp, waiting, withEmail, total, rows, campaigns] = await Promise.all([
+    prisma.prospect.count({ where: { organizationId: orgId, status: { not: "SKIPPED" } } }),
+    prisma.prospect.count({ where: { organizationId: orgId, status: "PULLED" } }),
+    prisma.prospect.count({ where: { organizationId: orgId, status: "WAITING" } }),
+    prisma.contact.count({ where: { organizationId: orgId, source: { in: ["apollo", "maps"] }, status: { not: "REJECTED" } } }),
+    prisma.prospect.count({ where }),
+    prisma.prospect.findMany({
+      where,
+      orderBy: [{ status: "asc" }, { fitScore: "desc" }, { createdAt: "asc" }],
+      skip: (opts.page - 1) * pageSize,
+      take: pageSize,
+      select: { id: true, fullName: true, title: true, company: true, companyDomain: true, country: true, employees: true, fitScore: true, status: true, audienceId: true, campaignId: true, source: true, city: true },
+    }),
+    prisma.campaign.findMany({ where: { organizationId: orgId }, select: { id: true, audiences: true } }),
+  ]);
+  const names = new Map<string, string>();
+  for (const c of campaigns) for (const a of (Array.isArray(c.audiences) ? c.audiences : []) as { id?: string; name?: string }[]) if (a?.id && a.name) names.set(a.id, a.name);
+  return {
+    counts: { found, lookedUp, withEmail, noEmail: Math.max(0, lookedUp - withEmail), waiting },
+    total,
+    page: opts.page,
+    pageSize,
+    rows: rows.map((r) => ({ ...r, audience: r.audienceId ? (names.get(r.audienceId) ?? null) : null })),
+  };
+}

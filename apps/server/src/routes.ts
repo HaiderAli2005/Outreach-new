@@ -19,6 +19,8 @@ import { systemLogsRouter } from "./modules/system-logs/system-logs.routes.js";
 import { webhooksRouter } from "./modules/webhooks/webhooks.routes.js";
 import { jobsRouter } from "./modules/jobs/jobs.routes.js";
 import { adminRouter } from "./modules/admin/admin.routes.js";
+import { googleMailCallback } from "./modules/admin/googleMail.callback.js";
+import { inboxKitWebhook } from "./modules/admin/inboxkit.webhook.js";
 import { unsubscribeRouter } from "./modules/unsubscribe/unsubscribe.routes.js";
 import { launchRouter, vocabRouter } from "./modules/launch/launch.routes.js";
 import { setupRouter } from "./modules/setup/setup.routes.js";
@@ -34,6 +36,9 @@ apiRouter.use("/webhooks", webhooksRouter);
 apiRouter.use("/jobs", jobsRouter);
 apiRouter.use("/public/batches", publicBatchesRouter);
 apiRouter.use("/admin", adminRouter);
+// Google returns the operator here after "Connect with Google" on a pool mailbox; the encrypted state is the proof.
+apiRouter.get("/google-mail/callback", limiter("google-mail", 10 * 60_000, 30), googleMailCallback);
+apiRouter.post("/inboxkit/webhook", limiter("inboxkit-webhook", 60_000, 300), inboxKitWebhook);
 apiRouter.use("/u", unsubscribeRouter);
 // Checked the moment a domain is entered, before sign-up, so a typo or an unreadable site is caught at step 1.
 apiRouter.get("/public/site-check", limiter("site-check", 10 * 60_000, 40), siteCheck);

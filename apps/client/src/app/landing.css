@@ -286,9 +286,9 @@
   #landing .lp-point:hover{transform:none}
 }
 
-/* ---------- Glass cards: the same liquid glass as the navbar ----------
-   --lg-bf is set by useLiquidGlassAll (Chromium only, while the card is on screen). Without it a card keeps the
-   same tint and edges with no backdrop effect, so a large blur never sits over the page grain. */
+/* ---------- Glass cards: the navbar's tint and edges, without a backdrop effect ----------
+   The cards sit over the plain page, where a lens bends nothing visible, and a dozen SVG backdrop filters drawn on
+   the CPU made scrolling stutter. --lg-bf is never set on them now, so the fallback (none) applies. */
 #landing :is(.console,.lp-facts-in,.lp-step,.lp-cell,.lp-point,.orbit-card,.price-card,.lp-incl,.lp-help,.cta){
   --glass-fill:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,0) 26px),rgba(255,252,246,.05);
   background:var(--glass-fill)!important;
@@ -354,3 +354,57 @@
 #landing .nav-cta .nav-open{position:relative;z-index:2;color:#15100C;background:#E2BE8C;box-shadow:inset 0 1px 0 rgba(255,255,255,.6),inset 0 -1px 0 rgba(0,0,0,.12),0 6px 14px -6px rgba(0,0,0,.45)}
 #landing .nav-cta .nav-open:hover{background:#EAC897}
 #landing .nav-cta .nav-open svg{color:#15100C}
+
+/* ---------- Light / dark switch in the navbar: a quiet glass circle that belongs to the bar ----------
+   Built from the --hw channel, so one rule draws white edges on the dark bar and dark edges on the light one. */
+#landing .nav .ap-theme{width:36px;height:36px;margin-right:4px;background:rgb(var(--hw) / .06);color:rgb(var(--hw) / .82);box-shadow:inset 0 0 0 1px rgb(var(--hw) / .16),inset 0 1px 0 rgb(var(--hw) / .12);transition:background .2s,color .2s,box-shadow .2s}
+#landing .nav .ap-theme:hover{background:rgb(var(--hw) / .12);color:rgb(var(--hw));box-shadow:inset 0 0 0 1px rgb(var(--hw) / .26),inset 0 1px 0 rgb(var(--hw) / .16)}
+#landing .nav .ap-theme svg{width:16px;height:16px}
+/* The hero hides overflow for its glows, which also cut off the console's shadow and flattened its bottom edge. */
+#landing .hero{padding-bottom:48px}
+/* The draft sits beside the reply it answers and ends where its text ends, so no empty block opens above the button. */
+#landing .lp-draft{align-self:start}
+#landing .lp-draft-b{margin-top:2px}
+
+/* ---------- step previews that mirror the app's own screens ---------- */
+/* 2 · an audience card from the onboarding: badge, name, people match, who we'll email */
+#landing .m-aud-h{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding-bottom:14px;border-bottom:1px solid var(--hair)}
+#landing .m-aud-h > div{display:grid;gap:6px;min-width:0}
+#landing .m-aud-h b{font:600 15px/1.3 var(--f-display);letter-spacing:-.015em;color:var(--ink)}
+#landing .m-badge{justify-self:start;padding:2px 8px;border-radius:6px;font:600 11px var(--f-body);color:var(--on-gold,#15100c);background:var(--grad)}
+#landing .m-aud-n{flex:none;text-align:right}
+#landing .m-aud-n b{display:block;font:600 22px/1 var(--f-display);letter-spacing:-.03em}
+#landing .m-aud-n small{margin-top:4px}
+#landing .m-kv{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+#landing .m-kv span{display:block;margin-top:4px;font:500 13px var(--f-body);color:var(--ink)}
+/* 3 · the free overview: people match and sample prospects with shortened surnames */
+#landing .m-people{display:grid;gap:6px}
+#landing .m-person{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:rgb(var(--hw) / .025);box-shadow:inset 0 0 0 1px var(--hair)}
+#landing .m-person b{display:block;font:600 13px var(--f-body);color:var(--ink)}
+#landing .m-person small{margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#landing .m-person > div{min-width:0}
+#landing .m-av{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:600 11px var(--f-body);color:var(--ink-2);background:rgb(var(--hw) / .06);box-shadow:inset 0 0 0 1px var(--hair)}
+#landing .m-hint{margin:4px 2px 0;font-size:11.5px;color:var(--ink-4)}
+#landing[data-motion] .lp-step[data-on] .m-person{animation:lpIn .6s var(--ease-out) calc(.1s + var(--k) * .12s) backwards}
+/* 5 · credit lines */
+#landing .m-line{grid-template-columns:minmax(0,1fr) auto auto}
+#landing .m-line > span:first-child{font:500 13.5px var(--f-body);color:var(--ink)}
+#landing .m-line b{font:600 14px var(--f-mono);color:var(--ink)}
+/* 6 · the cockpit's "Today's sends" line: sent solid gold, booked light, the now marker */
+#landing .m-now{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-3)}
+#landing .m-line-track{position:relative;height:64px;margin-top:16px;border-bottom:1px solid var(--hair)}
+#landing .m-line-track i{position:absolute;bottom:0;width:6px;height:26px;margin-left:-3px;border-radius:3px 3px 1px 1px;background:rgb(var(--hw) / .14);transform-origin:bottom}
+#landing .m-line-track i[data-sent]{height:38px;background:linear-gradient(180deg,#E3C08E,#A67B5B)}
+#landing .m-line-track em{position:absolute;bottom:0;top:-6px;width:2px;margin-left:-1px;background:var(--ink)}
+#landing .m-line-track em::before{content:"";position:absolute;top:-4px;left:-3px;width:8px;height:8px;border-radius:50%;background:var(--ink)}
+#landing[data-motion] .lp-step[data-on] .m-line-track i{animation:lpRise .6s var(--ease-out) calc(var(--k) * .03s) backwards}
+#landing .m-axis{display:flex;justify-content:space-between;margin-top:6px;font:500 11px var(--f-mono);color:var(--ink-4)}
+#landing .m-warm-lbl b{color:var(--ink);font-weight:600}
+/* after launch · CSV and Google Maps rows */
+#landing .lp-csvs{margin-top:auto;display:grid;gap:8px}
+#landing .lp-csvs .lp-csv{margin-top:0}
+#landing .lp-csv svg{width:14px;height:14px;vertical-align:-2px;color:var(--gold)}
+@media (max-width:700px){#landing .m-kv{grid-template-columns:1fr 1fr}#landing .m-aud-h{flex-direction:column}#landing .m-aud-n{text-align:left}}
+#landing .m-today .m-ready svg{width:13px;height:13px;flex:none}
+#landing .m-today .m-warm-lbl{gap:12px;margin-top:14px}
+#landing .m-today .m-warm-lbl > span{white-space:nowrap}

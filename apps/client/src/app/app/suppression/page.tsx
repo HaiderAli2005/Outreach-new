@@ -220,7 +220,7 @@ export default function SuppressionPage() {
         label="Who added it"
         value={origin}
         onChange={(v) => (setOrigin(v), setPage(1))}
-        options={ORIGINS.map(([v, l]) => ({ value: v, label: v && data?.meta.byOrigin ? `${l} · ${n0(data.meta.byOrigin[v])}` : l }))}
+        options={ORIGINS.map(([v, l]) => ({ value: v, label: l, count: v && data?.meta.byOrigin ? data.meta.byOrigin[v] : null }))}
       />
       <div className="toolbar">
         <input className="input sm grow" placeholder="Search emails and domains" value={search} onChange={(e) => (setSearch(e.target.value), setPage(1))} aria-label="Search blocklist" />

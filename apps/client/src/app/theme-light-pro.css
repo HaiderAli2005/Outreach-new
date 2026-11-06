@@ -1,0 +1,362 @@
+/*
+ * Light mode, "paper and gold": the same design as theme-dark-pro.css, tuned for the cream light theme. Light only:
+ * everything is scoped to html[data-theme="light"] and loaded after theme-light.css. On a light page depth comes
+ * from soft paper shadows instead of glows, the gold is deepened so it reads on cream, and text stays near-black.
+ *
+ *   1. a clean cream canvas; cards are white paper with a crisp 1px edge and a soft shadow
+ *   2. hierarchy by contrast: small uppercase tracked labels, big bold dark numbers
+ *   3. one vivid accent, gold, on solid primary buttons and live data
+ *   4. the signature texture: a gold halftone dot field fading out of the corner of the key cards
+ *   5. one highlighted card per page: "Up next"
+ */
+
+html[data-theme="light"] .ap-shell,
+html[data-theme="light"] .shell-bg {
+  --bg: #ebe6dc;
+  --surface: #fdfcf9;
+  --surface-2: #f5f1ea;
+  --field: #ffffff;
+  --hair: #e1d9cc;
+  --hair-2: #cfc6b6;
+  --ink: #12110f;
+  --ink-2: #45413a;
+  --ink-3: #6b655b;
+  --ink-4: #948d81;
+  --gold: #a06f1c;
+  --gold-soft: rgb(176 125 34 / 0.1);
+  --gold-line: rgb(176 125 34 / 0.5);
+  --grad: linear-gradient(180deg, #f3c871 0%, #dc9d38 100%);
+  --on-gold: #1a1206;
+  --good: #23824f;
+  --warn: #a5690c;
+  --bad: #c2441b;
+  --paper: 0 1px 2px rgb(60 42 14 / 0.06), 0 10px 26px -16px rgb(60 42 14 / 0.2);
+  --dots-gold: radial-gradient(rgb(176 125 34 / 0.55) 1.1px, transparent 1.7px);
+  --dots-good: radial-gradient(rgb(35 130 79 / 0.32) 1px, transparent 1.5px);
+  --dots-bad: radial-gradient(rgb(194 68 27 / 0.5) 1.1px, transparent 1.7px);
+  --dots-warn: radial-gradient(rgb(165 105 12 / 0.55) 1.1px, transparent 1.7px);
+  /* Charts: deep gold for what matters and the KPI lines, an indigo for volume next to it. */
+  --data: #b07d22;
+  --chart-1: #b07d22;
+  --chart-2: #5b63d6;
+}
+
+/* ── canvas ─────────────────────────────────────────────────────────────── */
+html[data-theme="light"] .ap-shell {
+  background: var(--bg);
+}
+html[data-theme="light"] .ap-shell .ap-main {
+  /* A warm wash of light from the top: depth without a gradient on every card. */
+  background: radial-gradient(1100px 420px at 50% -260px, rgb(220 157 56 / 0.12), transparent 70%), var(--bg);
+}
+html[data-theme="light"] .ap-shell .ap-top {
+  background: rgb(235 230 220 / 0.85);
+  border-bottom-color: var(--hair);
+}
+
+/* ── sidebar ────────────────────────────────────────────────────────────── */
+html[data-theme="light"] .ap-shell .ap-rail {
+  background: #e6e0d4;
+  border-right-color: var(--hair);
+}
+html[data-theme="light"] .ap-shell .ap-sec,
+html[data-theme="light"] .ap-shell .ap-sec a {
+  font: 600 10.5px var(--font-geist-sans), sans-serif;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+html[data-theme="light"] .ap-shell .ap-sec a:hover {
+  color: var(--ink-2);
+}
+html[data-theme="light"] .ap-shell .ap-nav a {
+  color: var(--ink-2);
+  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+}
+html[data-theme="light"] .ap-shell .ap-nav a:hover {
+  background: rgb(255 255 255 / 0.55);
+  color: var(--ink);
+}
+html[data-theme="light"] .ap-shell .ap-nav a.on {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--hair), 0 1px 2px rgb(60 42 14 / 0.06);
+  color: var(--ink);
+}
+html[data-theme="light"] .ap-shell .ap-nav a.on svg {
+  color: var(--gold);
+  opacity: 1;
+}
+html[data-theme="light"] .ap-shell .ap-cdot.is-on::before {
+  background: var(--good);
+  box-shadow: 0 0 0 3px rgb(35 130 79 / 0.14);
+}
+
+/* ── cards: white paper, crisp edge, soft shadow ───────────────────────── */
+html[data-theme="light"] .ap-shell :is(.ap-card, .cpt-hero, .cpt-next, .cpt-feed, .cpt-task, .panel, .ap-status) {
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 1px var(--hair), var(--paper);
+  transition: box-shadow 0.2s var(--ease);
+}
+html[data-theme="light"] .ap-shell :is(.ap-card, .cpt-feed, .cpt-task, .panel):hover {
+  box-shadow: inset 0 0 0 1px var(--hair-2), 0 1px 2px rgb(60 42 14 / 0.07), 0 14px 32px -16px rgb(60 42 14 / 0.26);
+}
+html[data-theme="light"] .ap-shell .panel.glass::before,
+html[data-theme="light"] .ap-shell .panel.glass::after {
+  display: none;
+}
+
+/* ── the status card: the gold dot field in its corner ─────────────────── */
+html[data-theme="light"] .ap-shell .cpt-hero {
+  isolation: isolate;
+}
+html[data-theme="light"] .ap-shell .cpt-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--dots-gold);
+  background-size: 8px 8px;
+  -webkit-mask-image: radial-gradient(420px 200px at 0% 0%, #000 0%, transparent 75%);
+  mask-image: radial-gradient(420px 200px at 0% 0%, #000 0%, transparent 75%);
+}
+html[data-theme="light"] .ap-shell .cpt-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(520px 220px at 0% 0%, rgb(220 157 56 / 0.1), transparent 70%);
+}
+html[data-theme="light"] .ap-shell .cpt-hero.is-warm::before {
+  background-image: var(--dots-warn);
+}
+html[data-theme="light"] .ap-shell .cpt-hero.is-bad::before {
+  background-image: var(--dots-bad);
+}
+html[data-theme="light"] .ap-shell .cpt-hero.is-bad::after {
+  background: radial-gradient(520px 220px at 0% 0%, rgb(194 68 27 / 0.08), transparent 70%);
+}
+html[data-theme="light"] .ap-shell .cpt-hero.is-warm {
+  box-shadow: inset 0 0 0 1px rgb(165 105 12 / 0.4), var(--paper);
+}
+html[data-theme="light"] .ap-shell .cpt-hero.is-bad {
+  box-shadow: inset 0 0 0 1px rgb(194 68 27 / 0.42), var(--paper);
+}
+html[data-theme="light"] .ap-shell .cpt-hero .cpt-title {
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+html[data-theme="light"] .ap-shell .cpt-facts {
+  border-left-color: var(--hair);
+  background: #f8f5ef;
+}
+html[data-theme="light"] .ap-shell .cpt-fact + .cpt-fact {
+  border-top-color: var(--hair);
+}
+html[data-theme="light"] .ap-shell .cpt-budget {
+  box-shadow: inset 0 1px 0 var(--hair);
+  background: #f8f5ef;
+}
+html[data-theme="light"] .ap-shell .ap-dot.is-go {
+  background: var(--good);
+  box-shadow: 0 0 0 3px rgb(35 130 79 / 0.16);
+  animation: pro-breathe-light 2.6s ease-in-out infinite;
+}
+@keyframes pro-breathe-light {
+  50% {
+    box-shadow: 0 0 0 6px rgb(35 130 79 / 0.08);
+  }
+}
+
+/* ── labels small and quiet, numbers big and dark ──────────────────────── */
+html[data-theme="light"] .ap-shell :is(.cpt-fact .k, .cpt-spend-head .k, .cpt-kpi .lab, .cpt-step, .ap-sec-h h2, .ap-card-h h2, .ap-tbl th, .cs-tbl th) {
+  font-family: var(--font-geist-sans), sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+html[data-theme="light"] .ap-shell .cpt-spend-cap {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+html[data-theme="light"] .ap-shell :is(.cpt-kpi .v, .cpt-spend-v, .cpt-fact .v) {
+  font-family: var(--font-geist-sans), sans-serif;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  color: var(--ink);
+}
+html[data-theme="light"] .ap-shell :is(.cpt-kpi .v, .cpt-spend-v) {
+  font-size: 34px;
+}
+html[data-theme="light"] .ap-shell .cpt-head h1 {
+  font-size: 28px !important;
+  letter-spacing: -0.035em;
+}
+
+/* ── KPI tiles: separate paper cards, a gold edge on hover ─────────────── */
+html[data-theme="light"] .ap-shell .cpt-kpis {
+  gap: 12px;
+  background: none;
+  box-shadow: none;
+  overflow: visible;
+  border-radius: 0;
+}
+html[data-theme="light"] .ap-shell .cpt-kpi {
+  position: relative;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--hair), var(--paper);
+  overflow: hidden;
+  transition: box-shadow 0.2s var(--ease);
+}
+html[data-theme="light"] .ap-shell .cpt-kpi::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgb(220 157 56 / 0.85), transparent);
+  opacity: 0;
+  transition: opacity 0.2s var(--ease);
+}
+html[data-theme="light"] .ap-shell .cpt-kpi:hover {
+  box-shadow: inset 0 0 0 1px var(--hair-2), 0 1px 2px rgb(60 42 14 / 0.07), 0 14px 32px -16px rgb(60 42 14 / 0.26);
+}
+html[data-theme="light"] .ap-shell .cpt-kpi:hover::before {
+  opacity: 1;
+}
+html[data-theme="light"] .ap-shell .cpt-kpi .sub {
+  border-top-color: var(--hair);
+}
+
+/* ── charts: rich colours, a soft shadow under the line ────────────────── */
+html[data-theme="light"] .ap-shell .ch-spark-svg {
+  overflow: visible;
+  filter: drop-shadow(0 2px 3px rgb(176 125 34 / 0.25));
+}
+html[data-theme="light"] .ap-shell .ch-spark path {
+  stroke-width: 2;
+}
+html[data-theme="light"] .ap-shell .ch-spark-dot {
+  box-shadow: 0 0 0 3px var(--surface);
+}
+
+/* ── the one highlighted card: what happens next ───────────────────────── */
+html[data-theme="light"] .ap-shell .cpt-next {
+  position: relative;
+  background: linear-gradient(180deg, rgb(220 157 56 / 0.09), transparent 130px), var(--surface);
+  box-shadow: inset 0 0 0 1px rgb(176 125 34 / 0.38), 0 12px 28px -22px rgb(150 100 20 / 0.25);
+}
+html[data-theme="light"] .ap-shell .cpt-next-when b {
+  color: var(--gold);
+}
+html[data-theme="light"] .ap-shell .cpt-next li {
+  transition: background 0.15s var(--ease);
+}
+html[data-theme="light"] .ap-shell .cpt-next li:hover {
+  background: rgb(220 157 56 / 0.06);
+}
+html[data-theme="light"] .ap-shell .cpt-next li + li {
+  box-shadow: inset 0 1px 0 var(--hair);
+}
+
+/* ── progress bars ─────────────────────────────────────────────────────── */
+html[data-theme="light"] .ap-shell :is(.cpt-bar, .bc-bar) {
+  height: 6px;
+  background: rgb(18 17 15 / 0.07);
+  box-shadow: none;
+}
+html[data-theme="light"] .ap-shell :is(.cpt-bar, .bc-bar) i {
+  background: var(--grad);
+  box-shadow: 0 1px 4px rgb(176 125 34 / 0.4);
+}
+
+/* ── buttons: solid gold primary, crisp white secondary ────────────────── */
+html[data-theme="light"] .ap-shell .btn-primary {
+  background: var(--grad) !important;
+  color: var(--on-gold) !important;
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.55), 0 0 0 1px rgb(176 125 34 / 0.55), 0 6px 16px -8px rgb(176 125 34 / 0.6) !important;
+  transition: box-shadow 0.2s var(--ease), transform 0.15s var(--ease), filter 0.2s var(--ease);
+}
+html[data-theme="light"] .ap-shell .btn-primary:hover:not(:disabled) {
+  filter: brightness(1.04) saturate(1.05);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.6), 0 0 0 1px rgb(176 125 34 / 0.7), 0 10px 24px -10px rgb(176 125 34 / 0.7) !important;
+}
+html[data-theme="light"] .ap-shell .btn-primary:active:not(:disabled) {
+  transform: translateY(1px);
+}
+html[data-theme="light"] .ap-shell .btn-ghost,
+html[data-theme="light"] .ap-shell .btn:not(.btn-primary):not(.btn-text):not(.btn-danger) {
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px var(--hair-2), 0 1px 2px rgb(60 42 14 / 0.06);
+  color: var(--ink);
+}
+html[data-theme="light"] .ap-shell .btn-ghost:hover:not(:disabled),
+html[data-theme="light"] .ap-shell .btn:not(.btn-primary):not(.btn-text):not(.btn-danger):hover:not(:disabled) {
+  background: #faf7f1;
+  box-shadow: inset 0 0 0 1px #bdb3a2, 0 2px 6px rgb(60 42 14 / 0.08);
+}
+
+/* ── inputs, pills ─────────────────────────────────────────────────────── */
+html[data-theme="light"] .ap-shell .input {
+  background: var(--field) !important;
+  box-shadow: inset 0 0 0 1px var(--hair-2) !important;
+}
+html[data-theme="light"] .ap-shell .input:focus {
+  box-shadow: inset 0 0 0 1px var(--gold-line), 0 0 0 4px rgb(220 157 56 / 0.16) !important;
+}
+html[data-theme="light"] .ap-shell :is(.pill-btn[aria-pressed="true"], .seg button[aria-pressed="true"]) {
+  background: rgb(220 157 56 / 0.14) !important;
+  box-shadow: inset 0 0 0 1px var(--gold-line) !important;
+  color: var(--ink) !important;
+}
+
+/* ── tables ────────────────────────────────────────────────────────────── */
+html[data-theme="light"] .ap-shell :is(.ap-tbl, .cs-tbl) tbody tr {
+  transition: background 0.15s var(--ease);
+}
+html[data-theme="light"] .ap-shell :is(.ap-tbl, .cs-tbl) tbody tr:hover {
+  background: rgb(220 157 56 / 0.05);
+}
+html[data-theme="light"] .ap-shell :is(.ap-tbl, .cs-tbl) :is(td, th) {
+  border-color: var(--hair);
+}
+
+/* ── banners and notices: a coloured dot field on the left edge ────────── */
+html[data-theme="light"] .ap-shell :is(.ap-banner, .notice) {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+html[data-theme="light"] .ap-shell :is(.ap-banner, .notice)::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 110px;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--dots-gold);
+  background-size: 7px 7px;
+  -webkit-mask-image: linear-gradient(90deg, #000, transparent);
+  mask-image: linear-gradient(90deg, #000, transparent);
+}
+html[data-theme="light"] .ap-shell :is(.ap-banner.bad, .notice.bad)::after {
+  background-image: var(--dots-bad);
+}
+html[data-theme="light"] .ap-shell :is(.ap-banner.warn, .notice.warn)::after {
+  background-image: var(--dots-warn);
+}
+html[data-theme="light"] .ap-shell .notice.good::after {
+  background-image: var(--dots-good);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="light"] .ap-shell .ap-dot.is-go {
+    animation: none;
+  }
+}

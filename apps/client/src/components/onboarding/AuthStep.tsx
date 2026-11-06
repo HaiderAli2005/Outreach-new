@@ -153,6 +153,8 @@ export function AuthCard({
                       e.preventDefault();
                       const fresh = await refetchProviders();
                       if (fresh.data?.google) window.location.href = googleHref;
+                      // No answer at all is the server being down, not Google being off: say which.
+                      else if (fresh.isError || !fresh.data) setErr({ msg: "Can't reach Aperture right now. Check your connection and try again in a moment." });
                       else setErr({ msg: "Google sign-in isn't switched on yet. Continue with your email for now." });
                     }}
                   >

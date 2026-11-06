@@ -1,29 +1,30 @@
 "use client";
 
 import Link from "next/link";
+import { ThemeToggle } from "@/components/shell/ThemeToggle";
 import { useEffect, useRef, useState } from "react";
 import { Icon, Mark, type IconId } from "@/components/ui/Icon";
 import { Skeleton } from "@/components/ui/primitives";
 import { DomainSearch } from "./DomainSearch";
-import { useLiquidGlass, useLiquidGlassAll } from "@/components/ui/liquidGlass";
+import { useLiquidGlass } from "@/components/ui/liquidGlass";
 import { usePlansQuery } from "@/store/api";
 import { useSessionBootstrap } from "@/components/shell/session";
 import { n0 } from "@/lib/format";
+import { FAQS } from "@/lib/landingContent";
 
 const EXAMPLE_FEED = [
-  { n: "Maya Reid", r: "Loomwork", m: "This is timely. Are you free Thursday at 3?", t: "Meeting booked", c: "g", av: "#8A6A45" },
-  { n: "Daniel Kerr", r: "Brightlabs", m: "Send over pricing and a short case study?", t: "Interested", c: "b", av: "#6B5B4A" },
+  { n: "Maya Reid", r: "Loomwork", m: "This is timely. Are you free Thursday at 3?", t: "Interested", c: "g", av: "#8A6A45" },
+  { n: "Daniel Kerr", r: "Brightlabs", m: "Send over pricing and a short case study?", t: "Question", c: "b", av: "#6B5B4A" },
   { n: "Priya Shah", r: "Parcelry", m: "Loop in Tom, he owns this on our side.", t: "Referral", c: "v", av: "#A07F55" },
-  { n: "Chris Bell", r: "Harbor & Co", m: "Not this quarter. Try me again in January.", t: "Later", c: "y", av: "#5E5850" },
-  { n: "Sofia Lund", r: "Fernway", m: "Yes, let's talk. Here's my calendar link.", t: "Meeting booked", c: "g", av: "#6E7F63" },
+  { n: "Chris Bell", r: "Harbor & Co", m: "Not this quarter. Try me again in January.", t: "Later · 8 Jan", c: "y", av: "#5E5850" },
+  { n: "Sofia Lund", r: "Fernway", m: "Yes, let's talk. Here's my calendar link.", t: "Interested", c: "g", av: "#6E7F63" },
 ];
-
-/** Every card on the home page that wears the same glass as the navbar. Their look is in landing.css. */
-const GLASS_CARDS = ".console, .lp-facts-in, .lp-step, .lp-cell, .lp-point, .orbit-card, .price-card, .lp-incl, .lp-help, .cta";
 
 function Nav() {
   const bar = useRef<HTMLDivElement>(null);
-  useLiquidGlass(bar, { scale: 24, bezel: 20 });
+  // The bezel spans the whole height of the bar, so text passing behind it bends like it does under a glass pill instead
+  // of only along a thin rim; the extra blur keeps the links readable over it. Steady: it stays on while scrolling.
+  useLiquidGlass(bar, { scale: 34, bezel: 30, blur: 3, steady: true });
   // Someone already signed in has nothing to sign in to or set up: they get one way back into the app.
   const session = useSessionBootstrap();
   return (
@@ -41,6 +42,7 @@ function Nav() {
           <a href="#faq">FAQ</a>
         </nav>
         <div className="nav-cta" aria-busy={session === "idle" || session === "loading"}>
+          <ThemeToggle />
           {session === "authed" ? (
             <Link className="btn btn-sm nav-open" href="/app">
               Open app
@@ -72,6 +74,8 @@ const MAIL = [
   " and hiring two growth roles for it. We help teams like yours book the first meetings in a new market, without touching your main domain. Worth a quick look?",
 ];
 const MAIL_LEN = MAIL.join("").length;
+/** 4 sending domains, 3 mailboxes each, 30 emails a mailbox a day: the real ceiling for this example. */
+const DAY_MAX = 360;
 
 function useTyping(on: boolean) {
   const [n, setN] = useState(on ? 0 : MAIL_LEN);
@@ -95,7 +99,7 @@ function Console({ domain }: { domain: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const grid = useRef<HTMLDivElement>(null);
   const [feedI, setFeedI] = useState(0);
-  const [sent, setSent] = useState(312);
+  const [sent, setSent] = useState(236);
   const [motion, setMotion] = useState(false);
   const [lines, setLines] = useState<string[]>([]);
   const [placed, setPlaced] = useState(0);
@@ -107,13 +111,13 @@ function Console({ domain }: { domain: string }) {
 
   useEffect(() => {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setPlaced(96.8);
+      setPlaced(98.1);
       return;
     }
     setMotion(true);
-    const g = setTimeout(() => setPlaced(96.8), 300);
+    const g = setTimeout(() => setPlaced(98.1), 300);
     const a = setInterval(() => setFeedI((i) => (i + EXAMPLE_FEED.length - 1) % EXAMPLE_FEED.length), 3600);
-    const b = setInterval(() => setSent((s) => (s >= 480 ? 280 : Math.min(480, s + 1 + Math.floor(Math.random() * 3)))), 1400);
+    const b = setInterval(() => setSent((s) => (s >= DAY_MAX ? 214 : Math.min(DAY_MAX, s + 1 + Math.floor(Math.random() * 3)))), 1400);
     const con = ref.current;
     let ticking = false;
     const upd = () => {
@@ -195,7 +199,7 @@ function Console({ domain }: { domain: string }) {
           </div>
           <span className="live">
             <span className="pulse" />
-            Warm · day 18
+            Sending · 12 mailboxes
           </span>
         </div>
         <div className="fl-grid" ref={grid}>
@@ -232,8 +236,8 @@ function Console({ domain }: { domain: string }) {
           </div>
           <div className="fl-mail">
             <div className="fl-mh">
-              <span>Writing now · step 1 of 3</span>
-              <span>sends 9:42</span>
+              <span>Writing now · email 1 of 4</span>
+              <span>sends 9:42am, their time</span>
             </div>
             <p className="fl-to">
               To <b>Maya Reid</b> · Head of Growth, Loomwork
@@ -247,19 +251,19 @@ function Console({ domain }: { domain: string }) {
             </p>
             <div className="fl-ft">
               <span>from {doms[1]}</span>
-              <span>inbox 7 of 12</span>
+              <span>mailbox 7 of 12 · 30 a day</span>
             </div>
           </div>
           <div className="fl-land">
-            <p className="fl-lb">Landing</p>
+            <p className="fl-lb">Replies</p>
             <div className="fl-ga">
               <svg viewBox="0 0 46 46" aria-hidden="true">
                 <circle cx="23" cy="23" r="19" className="fl-ga-bg" />
                 <circle cx="23" cy="23" r="19" className="fl-ga-on" style={{ strokeDashoffset: 119.4 * (1 - placed / 100) }} />
               </svg>
               <div>
-                <small>Primary inbox</small>
-                <b className="num">96.8%</b>
+                <small>Delivered, last 7 days</small>
+                <b className="num">98.1%</b>
               </div>
             </div>
             {reply.map((f, k) => (
@@ -281,10 +285,10 @@ function Console({ domain }: { domain: string }) {
         </div>
         <div className="fl-bt">
           <div>
-            Sent today<b className="num">{sent} / 480</b>
+            Sent today<b className="num">{sent} of {DAY_MAX}</b>
           </div>
           <div>
-            Inboxes<b className="num">12 of 12</b>
+            Mailboxes<b className="num">12 sending</b>
           </div>
           <div>
             Replies<b className="num">{replies}</b>
@@ -394,13 +398,13 @@ const rd = (i: number, step = 0.08) => ({ ["--rd" as string]: `${(i * step).toFi
 
 function Facts() {
   const facts: [number, string, string][] = [
-    [14, "days", "of warmup before any inbox sends a campaign email"],
-    [40, "a day", "the most any single inbox will ever send"],
-    [3, "records", "SPF, DKIM and DMARC set up on every sending domain"],
+    [6, "weeks", "of aging and warmup behind every sending domain before its first campaign email"],
+    [30, "a day", "the most any one mailbox sends, so every sender stays inside safe limits"],
+    [4, "emails", "per person, on days 0, 3, 7 and 14, all in one thread"],
     [0, "cold emails", "sent from your main domain, ever"],
   ];
   return (
-    <section className="lp-facts" aria-label="How Aperture protects your sending">
+    <section className="lp-facts" aria-label="How Aperture protects your sending reputation">
       <div className="wrap">
         <div className="lp-facts-in">
           {facts.map(([n, unit, text], i) => (
@@ -419,13 +423,17 @@ function Facts() {
 }
 
 const STEPS = [
-  { t: "Enter your domain", p: "We read your site to learn what you sell, who it is for and how you talk about it." },
-  { t: "Meet your audience", p: "The industries, job titles and regions most likely to buy, each one you can edit." },
-  { t: "See a free preview", p: "Your market size, real sample prospects and a written sequence. Nothing is sent and no card is needed." },
-  { t: "Pick emails a day", p: "From 100 to 5,000 a day. Every email is $0.04, nothing else." },
-  { t: "Add your card", p: "It unlocks $10 of free credit and nothing is charged. Remove it any time, in one click." },
-  { t: "Launch the same day", p: "Your emails go out from senders that are already warmed up. No domains to buy, no weeks of warmup." },
+  { t: "Enter your domain", p: "Aperture reads your website to learn what you sell, who buys it and how you describe it. No forms, no call." },
+  { t: "Meet your buyers", p: "Your audiences, ranked by where to start: job titles, seniority, company size and countries, each one yours to edit." },
+  { t: "Get a free overview", p: "How many people match, real sample prospects and a written four-email sequence. Nothing is sent and no card is needed." },
+  { t: "Set your daily budget", p: "From $4 to $200 a day, which is 100 to 5,000 emails. Every email is $0.04, and the budget is a ceiling, never a target." },
+  { t: "Add your card", p: "It unlocks $10 of free credit, about 250 emails, and nothing is charged. Top up from $25 when you like the replies." },
+  { t: "Launch the same day", p: "Emails go out from mailboxes that are already warmed, in each person's own working hours. Your cockpit shows every send." },
 ];
+
+/** Today's sends in the cockpit: one slot per send across the working day, sent ones solid, booked ones light. */
+const TODAY = [9, 9.2, 9.5, 9.9, 10.1, 10.4, 10.6, 10.9, 11.3, 11.6, 12.1, 12.4, 13.2, 13.5, 13.9, 14.3, 14.6, 15, 15.4, 15.8, 16.1, 16.5];
+const NOW_AT = 13.3;
 
 function StepMock({ i, domain }: { i: number; domain: string }) {
   if (i === 0)
@@ -455,40 +463,65 @@ function StepMock({ i, domain }: { i: number; domain: string }) {
   if (i === 1)
     return (
       <div className="m-card m-aud">
-        {[
-          ["Job titles", ["Head of Growth", "VP Sales", "Founder"]],
-          ["Industries", ["B2B software", "Fintech"]],
-          ["Regions", ["United States", "United Kingdom"]],
-        ].map(([h, chips], g) => (
-          <div key={h as string}>
-            <small>{h as string}</small>
-            <div className="m-chips">
-              {(chips as string[]).map((c, k) => (
-                <span key={c} style={{ ["--k" as string]: g * 3 + k }}>
-                  {c}
-                </span>
-              ))}
-            </div>
+        <div className="m-aud-h">
+          <div>
+            <span className="m-badge">Run first</span>
+            <b>Growth teams at B2B software companies</b>
           </div>
-        ))}
+          <span className="m-aud-n">
+            <b className="num">10,466</b>
+            <small>people match</small>
+          </span>
+        </div>
+        <div>
+          <small>Job titles</small>
+          <div className="m-chips">
+            {["Head of Growth", "VP Marketing", "Demand Generation Manager"].map((c, k) => (
+              <span key={c} style={{ ["--k" as string]: k }}>
+                {c}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="m-kv">
+          <div>
+            <small>Seniority</small>
+            <span>VP, Head, Director</span>
+          </div>
+          <div>
+            <small>Company size</small>
+            <span>51 to 500 employees</span>
+          </div>
+          <div>
+            <small>Countries</small>
+            <span>US, UK</span>
+          </div>
+        </div>
       </div>
     );
   if (i === 2)
     return (
       <div className="m-card m-prev">
         <div>
-          <small>Companies in your market</small>
-          <b className="num">12,480</b>
-          <span className="m-note">Example numbers</span>
+          <small>People match your buyers</small>
+          <b className="num">26,493</b>
+          <span className="m-note">17,958 with a reachable email</span>
         </div>
-        <div className="m-mail">
-          <small>Email 1 of 3</small>
-          <p>
-            Quick idea for <span className="m-tk">company</span>
-          </p>
-          <i style={{ width: "92%" }} />
-          <i style={{ width: "78%" }} />
-          <i style={{ width: "64%" }} />
+        <div className="m-people">
+          {[
+            ["Kazuhiko S.", "Head of Growth at Loomwork"],
+            ["Alessandra T.", "VP Marketing at Fernway"],
+            ["Daniel K.", "Demand Gen Manager at Brightlabs"],
+          ].map(([n, r], k) => (
+            <div className="m-person" key={n} style={{ ["--k" as string]: k }}>
+              <span className="m-av">{n[0]}</span>
+              <div>
+                <b>{n}</b>
+                <small>{r}</small>
+              </div>
+            </div>
+          ))}
+          <p className="m-hint">Surnames and addresses stay hidden until you launch.</p>
         </div>
       </div>
     );
@@ -496,19 +529,19 @@ function StepMock({ i, domain }: { i: number; domain: string }) {
     return (
       <div className="m-card m-vol">
         <div className="m-vol-top">
-          <span>Emails a day</span>
-          <b className="num">1,000</b>
+          <span>Daily budget</span>
+          <b className="num">$20 a day</b>
         </div>
         <div className="m-track">
-          <i />
+          <i style={{ width: "8.1%" }} />
         </div>
         <div className="m-vol-out">
           <div>
-            <b className="num">$40</b>
-            <small>a day</small>
+            <b className="num">500</b>
+            <small>emails a day</small>
           </div>
           <div>
-            <b className="num">250</b>
+            <b className="num">125</b>
             <small>new people a day</small>
           </div>
           <div>
@@ -522,35 +555,46 @@ function StepMock({ i, domain }: { i: number; domain: string }) {
     return (
       <div className="m-card m-doms">
         {[
-          ["$25", "625 emails"],
-          ["$100", "2,500 emails"],
-          ["Free", "250 emails to start"],
-        ].map(([d, e], k) => (
-          <div className="m-dom" key={d} style={{ ["--k" as string]: k }}>
-            <span className="mono">{d}</span>
-            <span className="m-fw">
-              <Icon id="arr" />
-              {e}
-            </span>
-            <span className="m-ok">
-              <Icon id="check" />
-              Prepaid
-            </span>
+          ["Free credit", "$10.00", "about 250 emails"],
+          ["Charged today", "$0.00", "nothing until you top up"],
+          ["Top-ups", "from $25", "prepaid, auto-reload off"],
+        ].map(([k, v, note], j) => (
+          <div className="m-dom m-line" key={k} style={{ ["--k" as string]: j }}>
+            <span>{k}</span>
+            <span className="m-fw">{note}</span>
+            <b className="num">{v}</b>
           </div>
         ))}
       </div>
     );
   return (
-    <div className="m-card m-warm">
-      <div className="m-bars" aria-hidden="true">
-        {Array.from({ length: 14 }, (_, k) => (
-          <i key={k} style={{ ["--k" as string]: k, height: `${18 + (k / 13) ** 1.3 * 82}%` }} />
+    <div className="m-card m-today">
+      <div className="m-vol-top">
+        <span>Today&apos;s sends</span>
+        <span className="m-now">
+          <span className="pulse" />
+          Now 1:18pm in London
+        </span>
+      </div>
+      <div className="m-line-track" aria-hidden="true">
+        {TODAY.map((h, k) => (
+          <i key={h} data-sent={h < NOW_AT ? "1" : undefined} style={{ left: `${((h - 9) / 8) * 100}%`, ["--k" as string]: k }} />
         ))}
+        <em style={{ left: `${((NOW_AT - 9) / 8) * 100}%` }} />
+      </div>
+      <div className="m-axis">
+        <span>9am</span>
+        <span>11am</span>
+        <span>1pm</span>
+        <span>3pm</span>
+        <span>5pm</span>
       </div>
       <div className="m-warm-lbl">
-        <span>Launch</span>
+        <span>
+          <b className="num">13</b> sent · <b className="num">9</b> to go · next 1:30pm
+        </span>
         <span className="m-ready">
-          <span className="pulse" />
+          <Icon id="check" />
           Sending today
         </span>
       </div>
@@ -586,7 +630,7 @@ function HowItWorks({ domain }: { domain: string }) {
               From domain to first reply <span className="dim">in one sitting.</span>
             </h2>
             <p className="sec-lede" data-reveal style={rd(2)}>
-              Six steps, in this order. You see your audience and a written sequence for free, and you only pay once you are happy with the plan.
+              Six steps, in this order. Your buyers, your market size and a written sequence are free to see, and you only pay once the plan looks right.
             </p>
             <ol className="lp-prog" data-reveal style={{ ...rd(3), ["--p" as string]: active / (STEPS.length - 1) }}>
               {STEPS.map((s, i) => (
@@ -629,12 +673,12 @@ function HowItWorks({ domain }: { domain: string }) {
 }
 
 const REPLIES = [
-  { n: "Maya Reid", m: "This is timely. Are you free Thursday at 3?", c: "Hot", k: "g" },
+  { n: "Maya Reid", m: "This is timely. Are you free Thursday at 3?", c: "Interested", k: "g" },
   { n: "Daniel Kerr", m: "What does onboarding look like for a team of 12?", c: "Question", k: "b" },
-  { n: "Chris Bell", m: "Not this quarter. Try me again in January.", c: "Not now · 8 Jan", k: "y" },
+  { n: "Chris Bell", m: "Not this quarter. Try me again in January.", c: "Later · 8 Jan", k: "y" },
   { n: "Priya Shah", m: "Tom owns this on our side, copying him in.", c: "Referral", k: "v" },
-  { n: "Sofia Lund", m: "Out of office until the 14th, back after that.", c: "Away · 14 Oct", k: "y" },
-  { n: "Owen Hart", m: "Please take me off your list.", c: "Stop · blocked", k: "r" },
+  { n: "Sofia Lund", m: "Out of office until the 14th, back after that.", c: "Away · 14 Oct", k: "v" },
+  { n: "Owen Hart", m: "Please take me off your list.", c: "Unsubscribe", k: "r" },
 ];
 
 function Product() {
@@ -650,11 +694,11 @@ function Product() {
               After launch
             </div>
             <h2 className="h2" data-reveal style={rd(1)}>
-              The busywork after the send <span className="dim">is ours.</span>
+              After the send, <span className="dim">the busywork is ours.</span>
             </h2>
           </div>
           <p className="sec-lede" data-reveal style={rd(2)}>
-            Replies get sorted with an answer drafted, new leads wait for your OK each week, and every opt out is honoured the moment it arrives.
+            Every reply is read and sorted with an answer drafted, new people can wait for your OK each week, and every unsubscribe is honoured the moment it arrives.
           </p>
         </div>
 
@@ -665,7 +709,7 @@ function Product() {
                 <Icon id="inbox" />
               </span>
               <h3>Every reply sorted, with a draft waiting</h3>
-              <p>Interested, question, not now, referral or stop. Leads get a reply written for you, and a not now gets a follow up date.</p>
+              <p>Interested, question, later, referral, away or unsubscribe. Interested people and questions get a reply drafted for you, and a later gets a follow-up date.</p>
             </div>
             <div className="lp-inbox">
               <div className="lp-inbox-bar">
@@ -673,14 +717,12 @@ function Product() {
                   All <b>6</b>
                 </span>
                 <span>
-                  Leads <b>3</b>
+                  Needs reply <b>2</b>
                 </span>
                 <span>
-                  Later <b>2</b>
+                  Handled <b>4</b>
                 </span>
-                <span>
-                  Stopped <b>1</b>
-                </span>
+                <span>Sent only</span>
               </div>
               {REPLIES.map((r, i) => (
                 <div className="lp-rep" key={r.n} data-sel={i === 0 ? "1" : undefined} style={{ ["--k" as string]: i }}>
@@ -714,13 +756,13 @@ function Product() {
               <span className="lp-ic">
                 <Icon id="users" />
               </span>
-              <h3>Leads you approve each week</h3>
-              <p>A fresh batch lands every week. Nothing goes out until you approve it, in the app or from Slack.</p>
+              <h3>A week review, if you want one</h3>
+              <p>Next week&apos;s new people wait for your OK, and Slack tells you when they are ready. Or let them go out automatically.</p>
             </div>
             <div className="lp-week">
               <div className="lp-week-top">
-                <span>Next week</span>
-                <b className="num">212 leads</b>
+                <span>Week of 9 Nov</span>
+                <b className="num">212 people</b>
               </div>
               <div className="lp-week-bar">
                 <i />
@@ -730,7 +772,7 @@ function Product() {
                   <Icon id="check" />
                   Approve week
                 </span>
-                <small>or in one click from Slack</small>
+                <small>or leave out anyone first</small>
               </div>
             </div>
           </article>
@@ -740,8 +782,8 @@ function Product() {
               <span className="lp-ic">
                 <Icon id="ban" />
               </span>
-              <h3>Opt outs honoured instantly</h3>
-              <p>Unsubscribes and bounces go straight to your blocklist, and anything still queued for them stops.</p>
+              <h3>Unsubscribes honoured instantly</h3>
+              <p>Unsubscribes and hard bounces go straight to your blocklist, and anything still queued for them stops at once.</p>
             </div>
             <div className="lp-block">
               {[
@@ -762,8 +804,8 @@ function Product() {
               <span className="lp-ic">
                 <Icon id="pulse" />
               </span>
-              <h3>Reports in Slack</h3>
-              <p>Daily, weekly and monthly numbers posted to your channel, so nobody has to log in to know how it is going.</p>
+              <h3>Slack, the moment it matters</h3>
+              <p>A ping when someone replies, a draft is waiting or a meeting is booked, plus daily, weekly and monthly reports in your channel.</p>
             </div>
             <div className="lp-slack">
               <span className="lp-slack-av">
@@ -780,7 +822,8 @@ function Product() {
                     ["Sent", "2,140"],
                     ["Replies", "41"],
                     ["New leads", "212"],
-                    ["Meetings", "6"],
+                    ["Meetings booked", "6"],
+                    ["Removed", "9"],
                   ].map(([k, v]) => (
                     <span key={k}>
                       {k} <b className="num">{v}</b>
@@ -796,14 +839,24 @@ function Product() {
               <span className="lp-ic">
                 <Icon id="upload" />
               </span>
-              <h3>Bring your own list</h3>
-              <p>Upload a CSV, use the audience we find, or mix both. Every address is checked before it gets an email.</p>
+              <h3>Your list, ours, or Google Maps</h3>
+              <p>Upload a CSV, use the people we find, or add local businesses from Google Maps. Every address is verified before it is emailed.</p>
             </div>
-            <div className="lp-csv">
-              <span className="mono">leads.csv</span>
-              <span>
-                <b className="num">1,204</b> checked
-              </span>
+            <div className="lp-csvs">
+              <div className="lp-csv">
+                <span className="mono">leads.csv</span>
+                <span>
+                  <b className="num">1,204</b> verified
+                </span>
+              </div>
+              <div className="lp-csv">
+                <span>
+                  <Icon id="pin" /> Dental clinics · Riyadh
+                </span>
+                <span>
+                  <b className="num">86</b> found on Maps
+                </span>
+              </div>
             </div>
           </article>
         </div>
@@ -815,17 +868,17 @@ function Product() {
 const POINTS: { ic: IconId; h: string; p: (base: string) => React.ReactNode }[] = [
   {
     ic: "shield",
-    h: "Managed sending, never your domain",
-    p: () => <>Emails go out from warmed-up sending domains we run and watch, so the reputation of your own domain stays untouched.</>,
+    h: "Managed sending domains, never yours",
+    p: (base) => <>Emails go out from sending domains we buy, set up, age and warm, like get{base}.com, with SPF, DKIM and DMARC in place. Your own domain&apos;s reputation stays untouched.</>,
   },
-  { ic: "key", h: "Every address verified first", p: () => "Nothing is sent to an address that fails verification or sits on a catch-all server, so bounces stay low." },
-  { ic: "flame", h: "Health watched for you", p: () => "Your bounce rate is on your credits page. If it climbs we warn you, and above 4% new emails pause until your list is checked again." },
-  { ic: "rotate", h: "One sender per conversation", p: () => "Each person always hears from the same sender, so follow-ups and replies stay in one thread." },
+  { ic: "key", h: "Every address verified first", p: () => "Nothing is sent to an address that fails verification or sits on a catch-all server, which keeps bounces low from the first day." },
+  { ic: "flame", h: "Limits that protect every sender", p: () => "Each mailbox sends at most 30 emails a day, and your bounce rate is watched for you. Above 4%, new emails pause until your list is checked again." },
+  { ic: "rotate", h: "Plain text, one thread, one sender", p: () => "No tracking pixels and no rewritten links. Each person always hears from the same mailbox, and every follow-up replies in the same thread." },
 ];
 
 function Deliverability({ domain }: { domain: string }) {
   const base = domain.split(".")[0];
-  const orb = ["Verified", "Warmed up", "No tracking pixels", "Unsubscribe link", "Bounces under 2%"];
+  const orb = ["Verified", "Warmed 6 weeks", "No tracking pixels", "Unsubscribe link", "30 a day max"];
   return (
     <section className="sec" id="deliverability">
       <div className="lp-orb lp-orb-b" aria-hidden="true">
@@ -911,12 +964,12 @@ function Deliverability({ domain }: { domain: string }) {
 
 
 const INCLUDED = [
-  "Warmed-up senders, ready on day one",
-  "Every address verified before it is emailed",
-  "Each email written for the person",
-  "Replies sorted with drafts written",
-  "Replies to your prospects are free",
-  "Prepaid credit, close your account any time",
+  "Warmed-up sending domains, ready on day one",
+  "Finding the person and verifying the address",
+  "A four-email sequence written for each person",
+  "Every reply read, sorted and drafted",
+  "$2 always kept for replies in live conversations",
+  "Export every lead any time, free",
 ];
 
 function Pricing() {
@@ -936,7 +989,7 @@ function Pricing() {
             </h2>
           </div>
           <p className="sec-lede" data-reveal style={rd(2)}>
-            One flat price for the first email, every follow-up and every reply, with finding the person, verifying the address and writing the message included. If we can&apos;t find an address you pay nothing. Run out of credit and your cold email pauses; your live conversations don&apos;t. No plan, no seats, no setup fee. Your leads are yours: export them any time.
+            One flat price for the first email, every follow-up and every reply. Finding the person, verifying the address and writing the message are included, and if we can&apos;t find an address you pay nothing. Prepaid, with no plan, no seats and no setup fee. If your credit runs out, cold email pauses and your live conversations keep going.
           </p>
         </div>
         <div className="price-card glass lp-price" data-reveal>
@@ -1058,18 +1111,7 @@ function Pricing() {
   );
 }
 
-const FAQS = [
-  ["Why not send from my own domain?", "Cold email carries reputation risk. If a campaign trips a spam filter, you want that to happen on a spare domain, not the one your customers and invoices depend on."],
-  ["How soon do emails go out?", "The same day you launch. Your emails go out from senders that are already warmed up, so there is no waiting period."],
-  ["What is in the free preview?", "An analysis of your business, the size of your market, sample prospects, a four step email sequence written for it and a recommended daily pace. No email is sent and no card is needed."],
-  ["How does pricing work?", "$0.04 for every email, the first one and each follow-up, paid from a prepaid balance you top up from $25. That includes finding the person, verifying their address and writing every message, replies included. If we can't find someone's address you pay nothing, and the last $2 of your balance is kept for replies, so a conversation never stops mid-thread because cold email used up the credit. Adding a card unlocks $10 of free credit and charges nothing; remove the card any time in one click. Nothing is ever charged automatically unless you switch on auto-reload."],
-  ["Can I export my leads?", "Yes. Your leads are yours. Export every person, with their full email address, any time, free. Nothing is masked and there is no reveal charge."],
-  ["Does anything send without my say-so?", "No. Your first 20 people and their emails wait for your approval, with no timer. Replies we draft wait for you to press Send."],
-  ["What happens when someone replies?", "Each reply is sorted as interested, question, not now, referral or stop. Leads get a drafted answer for you to send, a not now gets a follow up date, and a stop goes straight to your blocklist."],
-  ["Do I need my own sending domains?", "No. Sending runs on domains we manage, watch and replace when needed. Your own domain never sends a cold email."],
-  ["Can I bring my own lead list?", "Yes. Upload a CSV on the launch screen, use the audience we find, or mix both. We check every address before it gets an email."],
-  ["Can I stop any time?", "Yes. There is no subscription. Pause sending whenever you like, remove your card, or close your account from the credits page in a couple of clicks."],
-];
+
 
 function Faq() {
   return (
@@ -1081,13 +1123,13 @@ function Faq() {
               FAQ
             </div>
             <h2 className="h2" data-reveal style={rd(1)}>
-              Good questions.
+              Questions about cold email, answered.
             </h2>
             <div className="lp-help" data-reveal style={rd(2)}>
-              <b>See it on your own site first</b>
-              <p>The preview reads your site and writes your first sequence. It is free and nothing is sent.</p>
+              <b>See it on your own domain first</b>
+              <p>The free overview reads your site, sizes your market and writes your first sequence. No card, and nothing is sent.</p>
               <Link className="btn btn-glass btn-sm" href="/onboarding">
-                Start the free preview
+                Start the free overview
                 <Icon id="arr" className="arr" />
               </Link>
             </div>
@@ -1116,7 +1158,6 @@ function Faq() {
 export function Landing() {
   const [domain, setDomain] = useState("northwind.io");
   const root = useRef<HTMLDivElement>(null);
-  useLiquidGlassAll(root, GLASS_CARDS);
   useLandingMotion(root);
 
   return (
@@ -1126,16 +1167,16 @@ export function Landing() {
         <section className="hero">
           <div className="hero-sky" aria-hidden="true" />
           <div className="hero-in wrap">
-            <p className="hero-kicker">Cold email infrastructure, set up by an agent</p>
+            <p className="hero-kicker">AI cold email software · sending domains included</p>
             <h1 className="display">
               <span className="ln">
-                <span>Type your domain.</span>
+                <span>Cold email that books meetings.</span>
               </span>
               <span className="ln l2">
-                <span>We build the outbound.</span>
+                <span>Your domain stays clean.</span>
               </span>
             </h1>
-            <p className="lede">Aperture reads your site, finds your buyers, then plans, warms and launches your sending domains. Your main domain never sends a cold email.</p>
+            <p className="lede">Type your domain. Aperture reads your website, finds the people most likely to buy, writes a personal email to each one and sends it from warmed-up domains we run. $0.04 an email, and your main domain never sends a cold email.</p>
             <div className="lq-stage">
               <DomainSearch id="heroDomain" hero onDomain={setDomain} />
             </div>
@@ -1187,7 +1228,7 @@ export function Landing() {
                 <Mark />
                 Aperture
               </a>
-              <p>Cold email infrastructure, set up by an agent. Your main domain never sends a cold email.</p>
+              <p>AI cold email software with warmed-up sending domains included. Your main domain never sends a cold email.</p>
             </div>
             <nav aria-label="Product">
               <b>Product</b>

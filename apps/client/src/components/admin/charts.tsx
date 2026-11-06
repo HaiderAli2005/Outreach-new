@@ -6,6 +6,12 @@ import { n0 } from "@/lib/format";
 /** Small SVG charts for the admin console. No chart library: every shape is drawn here so it matches the theme. */
 
 export const TONE = {
+  /** Ordinary data: one quiet ink, so colour is left for what means something. */
+  data: "var(--data)",
+  /** The series that matters (the reference uses its accent): Aperture gold, tuned per theme. */
+  accent: "var(--chart-1)",
+  /** The second series: a soft glacier blue, never grey, so volume reads calm next to the result. */
+  blue: "var(--chart-2)",
   gold: "var(--gold)",
   good: "var(--good)",
   warn: "var(--warn)",
@@ -16,7 +22,7 @@ export const TONE = {
 } as const;
 
 /** Maturity ramp, light to dark. Validated for colour-blind separation and contrast on the app surface. */
-export const RAMP = { m1: "#F3E2C6", m2: "var(--gold)", m3: "#8A6A3C" } as const;
+export const RAMP = { m1: "var(--ramp-1, #F3E2C6)", m2: "var(--gold)", m3: "#8A6A3C" } as const;
 
 type Fmt = (v: number) => string;
 
@@ -123,6 +129,34 @@ export interface Series {
    * name and latest value in the right margin. One chart, one data colour.
    */
   ref?: boolean;
+  /** Draws soft rounded columns instead of a line: right for sparse daily counts, where a line would zigzag. */
+  bars?: boolean;
+  /** Draws a smooth curve through the points (it never overshoots, so it never invents a dip or a peak). */
+  smooth?: boolean;
+}
+
+/**
+ * Monotone cubic curve through points (Fritsch–Carlson). Smooth like a spline, but it never overshoots between two
+ * values, so a count of 0 then 4 never dips below 0.
+ */
+export function monotone(pts: [number, number][]): string {
+  const n = pts.length;
+  if (n < 2) return n ? `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}` : "";
+  const dx: number[] = [];
+  const m: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx.push(pts[i + 1][0] - pts[i][0]);
+    m.push((pts[i + 1][1] - pts[i][1]) / (dx[i] || 1));
+  }
+  const t: number[] = [m[0]];
+  for (let i = 1; i < n - 1; i++) t.push(m[i - 1] * m[i] <= 0 ? 0 : (3 * (dx[i - 1] + dx[i])) / ((2 * dx[i] + dx[i - 1]) / m[i - 1] + (dx[i] + 2 * dx[i - 1]) / m[i]));
+  t.push(m[n - 2]);
+  let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const h = dx[i] / 3;
+    d += `C${(pts[i][0] + h).toFixed(1)},${(pts[i][1] + h * t[i]).toFixed(1)} ${(pts[i + 1][0] - h).toFixed(1)},${(pts[i + 1][1] - h * t[i + 1]).toFixed(1)} ${pts[i + 1][0].toFixed(1)},${pts[i + 1][1].toFixed(1)}`;
+  }
+  return d;
 }
 
 const PAD = { l: 46, r: 14, t: 14, b: 28 };
@@ -173,6 +207,25 @@ export function LineChart({
   const y = (v: number) => PAD.t + ih - (Math.min(v, yMax) / yMax) * ih;
   const nothing = !all.some((v) => v > 0);
 
+  // Runs of consecutive points, split where a value is missing.
+  const runs = (vals: (number | null)[]) => {
+    const out: [number, number][][] = [];
+    let cur: [number, number][] = [];
+    vals.forEach((v, i) => {
+      if (v === null) {
+        if (cur.length) out.push(cur);
+        cur = [];
+      } else cur.push([x(i), y(v)]);
+    });
+    if (cur.length) out.push(cur);
+    return out;
+  };
+  const smoothPath = (vals: (number | null)[]) => runs(vals).map(monotone).join("");
+  const smoothArea = (vals: (number | null)[]) =>
+    runs(vals)
+      .filter((r) => r.length > 1)
+      .map((r) => `${monotone(r)}L${r[r.length - 1][0].toFixed(1)},${y(0).toFixed(1)}L${r[0][0].toFixed(1)},${y(0).toFixed(1)}Z`)
+      .join("");
   const path = (vals: (number | null)[], step?: boolean) => {
     let d = "";
     let pen = false;
@@ -205,7 +258,10 @@ export function LineChart({
     if (endLabels || endLabel) {
       (endLabels ? data : data.slice(0, 1)).forEach((s) => {
         const last = lastOf(s);
-        if (last) notes.push({ key: `e-${s.key}`, y: y(last.v) + 4, text: format(last.v), color: s.color, dot: { x: x(last.i), y: y(last.v), color: s.color } });
+        if (!last) return;
+        // With more than one line, each end label carries its name so the colour is never the only cue.
+        const text = endLabels && data.length > 1 ? `${s.label} ${format(last.v)}` : format(last.v);
+        notes.push({ key: `e-${s.key}`, y: y(last.v) + 4, text, color: s.color, dot: { x: x(last.i), y: y(last.v), color: s.color } });
       });
     }
     spread(notes, 15, PAD.t + 8, PAD.t + ih);
@@ -228,7 +284,7 @@ export function LineChart({
             .filter((s) => s.area)
             .map((s) => (
               <linearGradient key={s.key} id={`${id}-${s.key}`} x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" style={{ stopColor: s.color, stopOpacity: 0.26 }} />
+                <stop offset="0%" style={{ stopColor: s.color, stopOpacity: 0.16 }} />
                 <stop offset="100%" style={{ stopColor: s.color, stopOpacity: 0 }} />
               </linearGradient>
             ))}
@@ -260,13 +316,40 @@ export function LineChart({
         {refs.map((s, k) => (
           <path key={s.key} d={path(s.values, s.step)} className="ch-ref" style={{ stroke: REF_INK[k % REF_INK.length], strokeDasharray: REF_DASH[k % REF_DASH.length] }} />
         ))}
-        {data.map((s) => (
+        {/* Columns first, so lines read on top of them */}
+        {(() => {
+          // Several bar series sit side by side in one group per day.
+          const barSeries = data.filter((s) => s.bars);
+          const group = Math.max(4, Math.min(28, (iw / Math.max(1, n)) * 0.7));
+          const gap = barSeries.length > 1 ? Math.min(3, group * 0.12) : 0;
+          const bw = Math.max(3, (group - gap * (barSeries.length - 1)) / Math.max(1, barSeries.length));
+          return barSeries.map((s, k) => {
+            const off = -group / 2 + k * (bw + gap);
+            return (
+              <g key={s.key}>
+                {s.values.map((v, i) =>
+                  v ? <path key={i} d={column(x(i) + off, y(v), bw, y(0) - y(v), Math.min(4, bw / 2))} className="ch-col" style={{ fill: s.color, opacity: hover === null || hover === i ? 0.9 : 0.45, animationDelay: `${Math.min(i, 30) * 18}ms` }} /> : null,
+                )}
+              </g>
+            );
+          });
+        })()}
+        {data.filter((s) => !s.bars).map((s) => (
           <g key={s.key}>
-            {s.area ? <path d={area(s.values, s.step)} style={{ fill: `url(#${id}-${s.key})` }} /> : null}
-            <path d={path(s.values, s.step)} className={`ch-line${s.dashed ? " dashed" : ""}`} style={{ stroke: s.color }} />
+            {s.area ? <path d={s.smooth ? smoothArea(s.values) : area(s.values, s.step)} className="ch-area" style={{ fill: `url(#${id}-${s.key})` }} /> : null}
+            {/* Solid lines draw themselves in; pathLength 1 lets one dash cover any line. */}
+            <path d={s.smooth ? smoothPath(s.values) : path(s.values, s.step)} className={`ch-line${s.dashed ? " dashed" : " draw"}`} pathLength={s.dashed ? undefined : 1} style={{ stroke: s.color }} />
           </g>
         ))}
         <line x1={PAD.l} x2={width - margin} y1={y(0)} y2={y(0)} className="ch-base" />
+        {/* A dot on every series latest value, unless the margin note already draws one. */}
+        {hover === null
+          ? data.filter((s) => !s.bars).map((s) => {
+              const last = lastOf(s);
+              if (!last || notes.some((t) => t.key === `e-${s.key}` && t.dot)) return null;
+              return <circle key={`end-${s.key}`} cx={x(last.i)} cy={y(last.v)} r={4} className="ch-dot ch-end" style={{ fill: s.color }} />;
+            })
+          : null}
         {hover === null
           ? notes.map((t) => (
               <g key={t.key}>
@@ -281,7 +364,7 @@ export function LineChart({
           <g>
             <line x1={x(hover)} x2={x(hover)} y1={PAD.t} y2={PAD.t + ih} className="ch-guide" />
             {series.map((s) =>
-              s.values[hover] !== null && s.values[hover] !== undefined ? (
+              !s.bars && s.values[hover] !== null && s.values[hover] !== undefined ? (
                 <circle key={s.key} cx={x(hover)} cy={y(s.values[hover]!)} r={4} className="ch-dot" style={{ fill: s.ref ? REF_INK[refs.indexOf(s) % REF_INK.length] : s.color, opacity: s.ref ? 0.9 : 1 }} />
               ) : null,
             )}
@@ -378,7 +461,7 @@ export function BarChart({
                 isForecast ? (
                   <path d={d} className="ch-forecast" style={{ stroke: colors?.[i] ?? color }} />
                 ) : (
-                  <path d={d} style={{ fill: colors?.[i] ?? color, opacity: hover === null || hover === i ? 1 : 0.5 }} />
+                  <path d={d} className="ch-col" style={{ fill: colors?.[i] ?? color, opacity: hover === null || hover === i ? 1 : 0.5, animationDelay: `${i * 40}ms` }} />
                 )
               ) : null}
               {valueLabels && v > 0 ? (
@@ -671,17 +754,128 @@ export function Spark({ values, color = TONE.gold }: { values: (number | null)[]
   const h = 28;
   const px = (i: number) => ((i / (values.length - 1)) * w).toFixed(1);
   const py = (v: number) => (h - 3 - ((v - lo) / span) * (h - 6)).toFixed(1);
-  const d = pts.map(([i, v], k) => `${k ? "L" : "M"}${px(i)},${py(v)}`).join("");
+  // A smooth curve that never overshoots, so a quiet week of zeros stays flat instead of zigzagging.
+  const d = monotone(pts.map(([i, v]) => [Number(px(i)), Number(py(v))] as [number, number]));
+  const [li, lv] = pts[pts.length - 1];
   return (
-    <svg className="ch-spark" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden>
-      <defs>
-        <linearGradient id={`${id}-sp`} x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" style={{ stopColor: color, stopOpacity: 0.22 }} />
-          <stop offset="100%" style={{ stopColor: color, stopOpacity: 0 }} />
-        </linearGradient>
-      </defs>
-      <path d={`${d}L${px(pts[pts.length - 1][0])},${h}L${px(pts[0][0])},${h}Z`} style={{ fill: `url(#${id}-sp)`, stroke: "none" }} />
-      <path d={d} style={{ stroke: color }} vectorEffect="non-scaling-stroke" />
-    </svg>
+    <span className="ch-spark" aria-hidden>
+      <svg className="ch-spark-svg" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+        <defs>
+          <linearGradient id={`${id}-sp`} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" style={{ stopColor: color, stopOpacity: 0.14 }} />
+            <stop offset="100%" style={{ stopColor: color, stopOpacity: 0 }} />
+          </linearGradient>
+        </defs>
+        <path className="ch-area" d={`${d}L${px(li)},${h}L${px(pts[0][0])},${h}Z`} style={{ fill: `url(#${id}-sp)`, stroke: "none" }} />
+        <path d={d} style={{ stroke: color }} vectorEffect="non-scaling-stroke" />
+      </svg>
+      {/* The latest value, as a round dot: drawn in HTML so the stretched SVG can't squash it into an oval. */}
+      <i className="ch-spark-dot" style={{ left: `${px(li)}%`, top: `${(Number(py(lv)) / h) * 100}%`, background: color, color }} />
+    </span>
+  );
+}
+
+export interface MiniPoint {
+  /** Short axis label: "Mon" or "Oct 6". */
+  label: string;
+  /** Full label for the tooltip: "Mon 20 Oct" or "Week of Oct 6". */
+  full: string;
+  /** null when there is nothing to show for that point (a delivery rate on a day nothing was sent). */
+  value: number | null;
+}
+
+/**
+ * A small chart for a number tile that can actually be read: a dot per day (or week) joined by straight lines, the
+ * scale on the left (top value and 0), the days underneath, and a tooltip on hover. Straight lines on purpose: a
+ * curve between two days would suggest values that never existed.
+ */
+export function MiniChart({ points, color = TONE.gold, format = n0, unit, max: fixedMax, height = 76 }: { points: MiniPoint[]; color?: string; format?: Fmt; unit?: (v: number) => string; max?: number; height?: number }) {
+  const [ref, width] = useWidth(240);
+  const [hover, setHover] = useState<number | null>(null);
+  const n = points.length;
+  const vals = points.map((p) => p.value).filter((v): v is number => v !== null);
+  const top = fixedMax ?? niceMax(Math.max(1, ...vals), 2);
+  const L = 30; // room for the scale
+  const R = 8;
+  const T = 8;
+  const B = 18; // room for the day labels
+  const iw = Math.max(10, width - L - R);
+  const ih = height - T - B;
+  const x = (i: number) => L + (n <= 1 ? iw / 2 : (i / (n - 1)) * iw);
+  const y = (v: number) => T + ih - (Math.min(v, top) / top) * ih;
+  // Straight segments, broken where a point has no value. Each run also closes down to the base line, for the
+  // soft fill under it.
+  let d = "";
+  let area = "";
+  let run: [number, number][] = [];
+  const close = () => {
+    if (run.length > 1) area += `M${run[0][0].toFixed(1)},${y(0).toFixed(1)}${run.map(([a, b]) => `L${a.toFixed(1)},${b.toFixed(1)}`).join("")}L${run[run.length - 1][0].toFixed(1)},${y(0).toFixed(1)}Z`;
+    run = [];
+  };
+  points.forEach((p, i) => {
+    if (p.value === null) return void close();
+    d += `${run.length ? "L" : "M"}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`;
+    run.push([x(i), y(p.value)]);
+  });
+  close();
+  const fillId = `mf${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  // Axis labels: every point when there are few, otherwise first, middle and last.
+  const show = n <= 7 ? points.map((_, i) => i).filter((i) => n <= 5 || i % 2 === 0 || i === n - 1) : [0, Math.round((n - 1) / 2), n - 1];
+  const lastIdx = (() => {
+    for (let i = n - 1; i >= 0; i--) if (points[i].value !== null) return i;
+    return -1;
+  })();
+  const onMove = (e: React.MouseEvent<SVGRectElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const i = Math.round(((e.clientX - r.left) / r.width) * (n - 1));
+    setHover(Math.max(0, Math.min(n - 1, i)));
+  };
+  const h = hover !== null ? points[hover] : null;
+  return (
+    <div className="ch ch-mini" ref={ref}>
+      <svg width={width} height={height} role="img" aria-label={points.map((p) => `${p.full}: ${p.value === null ? "none" : format(p.value)}`).join(", ")}>
+        <line x1={L} x2={width - R} y1={y(top)} y2={y(top)} className="ch-mini-top" />
+        <line x1={L} x2={width - R} y1={y(0)} y2={y(0)} className="ch-mini-base" />
+        <text x={L - 6} y={y(top) + 3.5} textAnchor="end" className="ch-mini-scale">
+          {format(top)}
+        </text>
+        <text x={L - 6} y={y(0) + 3.5} textAnchor="end" className="ch-mini-scale">
+          {format(0)}
+        </text>
+        <defs>
+          <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" style={{ stopColor: color, stopOpacity: 0.32 }} />
+            <stop offset="1" style={{ stopColor: color, stopOpacity: 0 }} />
+          </linearGradient>
+        </defs>
+        {area ? <path d={area} className="ch-mini-area" fill={`url(#${fillId})`} /> : null}
+        {d ? <path d={d} className="ch-line draw ch-mini-line" pathLength={1} style={{ stroke: color }} /> : null}
+        {points.map((p, i) =>
+          p.value === null ? null : (
+            <circle
+              key={i}
+              cx={x(i)}
+              cy={y(p.value)}
+              r={i === lastIdx || i === hover ? 4.2 : 3}
+              className={`ch-mini-dot${i === lastIdx ? " last" : ""}`}
+              style={{ fill: color, animationDelay: `${300 + i * 45}ms` }}
+            />
+          ),
+        )}
+        {show.map((i) => (
+          <text key={i} x={x(i)} y={height - 4} textAnchor={i === 0 && n > 1 ? "start" : i === n - 1 && n > 1 ? "end" : "middle"} className="ch-mini-x">
+            {points[i].label}
+          </text>
+        ))}
+        {hover !== null ? <line x1={x(hover)} x2={x(hover)} y1={T} y2={T + ih} className="ch-guide" /> : null}
+        <rect x={L - 6} y={0} width={iw + 12} height={height} fill="transparent" onMouseMove={onMove} onMouseLeave={() => setHover(null)} />
+      </svg>
+      {h ? (
+        <div className="ch-tip ch-mini-tip" style={{ left: Math.min(Math.max(x(hover!), 70), width - 70) }}>
+          <small>{h.full}</small>
+          <b>{h.value === null ? "nothing sent" : unit ? unit(h.value) : format(h.value)}</b>
+        </div>
+      ) : null}
+    </div>
   );
 }

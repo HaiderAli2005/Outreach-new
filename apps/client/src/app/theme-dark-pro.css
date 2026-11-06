@@ -1,0 +1,376 @@
+/*
+ * Dark mode, "obsidian and gold". Dark only: everything is scoped to :root:not([data-theme="light"]), so the light
+ * theme is untouched. Loaded after app-ui.css and wins on specificity, not !important (except where design-v2.css
+ * already used it).
+ *
+ *   1. a true near-black canvas; cards are flat, one step lighter, with a crisp 1px edge (no muddy gradients)
+ *   2. hierarchy by contrast: small uppercase tracked labels, big bold white numbers
+ *   3. one vivid accent, gold, on solid primary buttons and live data
+ *   4. a signature texture: a gold halftone dot field that fades out of the corner of the key cards
+ *   5. one glowing card per page: the thing that matters next ("Up next")
+ */
+
+:root:not([data-theme="light"]) .ap-shell,
+:root:not([data-theme="light"]) .shell-bg {
+  --bg: #0a0908;
+  --surface: #131210;
+  --surface-2: #1b1916;
+  --field: #0e0d0b;
+  --hair: rgb(255 240 220 / 0.085);
+  --hair-2: rgb(255 240 220 / 0.15);
+  --ink: #f8f5f0;
+  --ink-2: #d2ccc3;
+  --ink-3: #9e978d;
+  --ink-4: #6f695f;
+  --gold: #f2b95e;
+  --gold-soft: rgb(242 185 94 / 0.1);
+  --gold-line: rgb(242 185 94 / 0.55);
+  --grad: linear-gradient(180deg, #f9d08a 0%, #eaa947 100%);
+  --on-gold: #1a1206;
+  --good: #5ee3a0;
+  --warn: #f7bb4d;
+  --bad: #ff7f6b;
+  --glow-gold: 0 0 0 1px rgb(242 185 94 / 0.55), 0 10px 30px -10px rgb(242 185 94 / 0.55);
+  /* Charts: gold for what matters and the KPI lines, a soft indigo for volume next to it. */
+  --data: #f2b95e;
+  --chart-1: #f2b95e;
+  --chart-2: #8f9bff;
+  --dots-gold: radial-gradient(rgb(242 185 94 / 0.42) 1px, transparent 1.5px);
+  --dots-good: radial-gradient(rgb(94 227 160 / 0.4) 1px, transparent 1.5px);
+  --dots-bad: radial-gradient(rgb(255 127 107 / 0.45) 1px, transparent 1.5px);
+  --dots-warn: radial-gradient(rgb(247 187 77 / 0.42) 1px, transparent 1.5px);
+}
+
+/* ── canvas ─────────────────────────────────────────────────────────────── */
+:root:not([data-theme="light"]) .ap-shell {
+  background: var(--bg);
+}
+:root:not([data-theme="light"]) .ap-shell .ap-main {
+  /* A faint warm light from the top of the page: depth without a gradient on every card. */
+  background: radial-gradient(1100px 420px at 50% -260px, rgb(242 185 94 / 0.07), transparent 70%), var(--bg);
+}
+:root:not([data-theme="light"]) .ap-shell .ap-top {
+  background: rgb(10 9 8 / 0.82);
+  border-bottom-color: var(--hair);
+}
+
+/* ── sidebar ────────────────────────────────────────────────────────────── */
+:root:not([data-theme="light"]) .ap-shell .ap-rail {
+  background: #0c0b0a;
+  border-right-color: var(--hair);
+}
+:root:not([data-theme="light"]) .ap-shell .ap-sec,
+:root:not([data-theme="light"]) .ap-shell .ap-sec a {
+  font: 600 10.5px var(--font-geist-sans), sans-serif;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+:root:not([data-theme="light"]) .ap-shell .ap-sec a:hover {
+  color: var(--ink-2);
+}
+:root:not([data-theme="light"]) .ap-shell .ap-nav a {
+  color: var(--ink-3);
+  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+}
+:root:not([data-theme="light"]) .ap-shell .ap-nav a:hover {
+  background: rgb(255 240 220 / 0.04);
+  color: var(--ink);
+}
+:root:not([data-theme="light"]) .ap-shell .ap-nav a.on {
+  background: linear-gradient(90deg, rgb(242 185 94 / 0.1), rgb(242 185 94 / 0.02) 70%), var(--surface);
+  box-shadow: inset 0 0 0 1px var(--hair);
+  color: var(--ink);
+}
+:root:not([data-theme="light"]) .ap-shell .ap-nav a.on svg {
+  color: var(--gold);
+  opacity: 1;
+}
+:root:not([data-theme="light"]) .ap-shell .ap-nav a.on::before {
+  box-shadow: 0 0 10px rgb(242 185 94 / 0.8);
+}
+/* Campaign state dots glow like live lights. */
+:root:not([data-theme="light"]) .ap-shell .ap-cdot.is-on::before {
+  background: var(--good);
+  box-shadow: 0 0 0 3px rgb(94 227 160 / 0.12), 0 0 6px rgb(94 227 160 / 0.5);
+}
+:root:not([data-theme="light"]) .ap-shell .ap-ws:hover,
+:root:not([data-theme="light"]) .ap-shell .ap-me:hover {
+  background: rgb(255 240 220 / 0.04);
+}
+
+/* ── cards: flat, one step up, crisp edge ──────────────────────────────── */
+:root:not([data-theme="light"]) .ap-shell :is(.ap-card, .cpt-hero, .cpt-next, .cpt-feed, .cpt-task, .panel, .ap-status) {
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 1px var(--hair), 0 1px 0 rgb(0 0 0 / 0.4);
+  transition: box-shadow 0.2s var(--ease);
+}
+:root:not([data-theme="light"]) .ap-shell :is(.ap-card, .cpt-feed, .cpt-task, .panel):hover {
+  box-shadow: inset 0 0 0 1px var(--hair-2), 0 1px 0 rgb(0 0 0 / 0.4);
+}
+:root:not([data-theme="light"]) .ap-shell .panel.glass::before,
+:root:not([data-theme="light"]) .ap-shell .panel.glass::after {
+  display: none;
+}
+
+/* ── the status card: the signature gold dot field in its corner ───────── */
+:root:not([data-theme="light"]) .ap-shell .cpt-hero {
+  isolation: isolate;
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--dots-gold);
+  background-size: 8px 8px;
+  -webkit-mask-image: radial-gradient(420px 200px at 0% 0%, #000 0%, transparent 75%);
+  mask-image: radial-gradient(420px 200px at 0% 0%, #000 0%, transparent 75%);
+  opacity: 0.9;
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(520px 220px at 0% 0%, rgb(242 185 94 / 0.09), transparent 70%);
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-hero.is-warm::before {
+  background-image: var(--dots-warn);
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-hero.is-bad::before {
+  background-image: var(--dots-bad);
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-hero.is-bad::after {
+  background: radial-gradient(520px 220px at 0% 0%, rgb(255 127 107 / 0.1), transparent 70%);
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-hero.is-warm {
+  box-shadow: inset 0 0 0 1px rgb(247 187 77 / 0.32), 0 1px 0 rgb(0 0 0 / 0.4);
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-hero.is-bad {
+  box-shadow: inset 0 0 0 1px rgb(255 127 107 / 0.38), 0 1px 0 rgb(0 0 0 / 0.4);
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-hero .cpt-title {
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-facts {
+  border-left-color: var(--hair);
+  background: rgb(0 0 0 / 0.18);
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-fact + .cpt-fact {
+  border-top-color: var(--hair);
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-budget {
+  box-shadow: inset 0 1px 0 var(--hair);
+  background: rgb(0 0 0 / 0.14);
+}
+/* Live status dot: a slow breathing glow. */
+:root:not([data-theme="light"]) .ap-shell .ap-dot.is-go {
+  background: var(--good);
+  box-shadow: 0 0 0 3px rgb(94 227 160 / 0.15), 0 0 10px rgb(94 227 160 / 0.8);
+  animation: pro-breathe 2.6s ease-in-out infinite;
+}
+@keyframes pro-breathe {
+  50% {
+    box-shadow: 0 0 0 5px rgb(94 227 160 / 0.06), 0 0 16px rgb(94 227 160 / 0.9);
+  }
+}
+
+/* ── labels small and quiet, numbers big and bright ────────────────────── */
+:root:not([data-theme="light"]) .ap-shell :is(.cpt-fact .k, .cpt-spend-head .k, .cpt-kpi .lab, .cpt-step, .ap-sec-h h2, .ap-card-h h2, .ap-tbl th, .cs-tbl th) {
+  font-family: var(--font-geist-sans), sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-spend-cap {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+:root:not([data-theme="light"]) .ap-shell :is(.cpt-kpi .v, .cpt-spend-v, .cpt-fact .v) {
+  font-family: var(--font-geist-sans), sans-serif;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  color: var(--ink);
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-kpi .v {
+  font-size: 34px;
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-spend-v {
+  font-size: 34px;
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-head h1 {
+  font-size: 28px !important;
+  letter-spacing: -0.035em;
+}
+
+/* ── KPI tiles: separate cards with a lit top edge ─────────────────────── */
+:root:not([data-theme="light"]) .ap-shell .cpt-kpis {
+  gap: 12px;
+  background: none;
+  box-shadow: none;
+  overflow: visible;
+  border-radius: 0;
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-kpi {
+  position: relative;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--hair);
+  overflow: hidden;
+  transition: box-shadow 0.2s var(--ease), transform 0.2s var(--ease);
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-kpi::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(242 185 94 / 0.55), transparent);
+  opacity: 0;
+  transition: opacity 0.2s var(--ease);
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-kpi:hover {
+  box-shadow: inset 0 0 0 1px var(--hair-2);
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-kpi:hover::before {
+  opacity: 1;
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-kpi .sub {
+  border-top-color: var(--hair);
+}
+
+/* ── charts: bright lines that glow ────────────────────────────────────── */
+:root:not([data-theme="light"]) .ap-shell .ch-spark-svg {
+  overflow: visible;
+  filter: drop-shadow(0 0 5px rgb(242 185 94 / 0.45));
+}
+:root:not([data-theme="light"]) .ap-shell .ch-spark path {
+  stroke-width: 2;
+}
+:root:not([data-theme="light"]) .ap-shell .ch-spark-dot {
+  box-shadow: 0 0 0 3px rgb(10 9 8 / 1), 0 0 10px currentColor;
+}
+
+/* ── the one glowing card: what happens next ───────────────────────────── */
+:root:not([data-theme="light"]) .ap-shell .cpt-next {
+  position: relative;
+  background: linear-gradient(180deg, rgb(242 185 94 / 0.05), transparent 120px), var(--surface);
+  box-shadow: inset 0 0 0 1px rgb(242 185 94 / 0.28), 0 14px 36px -28px rgb(242 185 94 / 0.22);
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-next-when b {
+  color: var(--gold);
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-next li {
+  transition: background 0.15s var(--ease);
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-next li:hover {
+  background: rgb(255 240 220 / 0.035);
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-next li + li {
+  box-shadow: inset 0 1px 0 var(--hair);
+}
+
+/* ── progress bars ─────────────────────────────────────────────────────── */
+:root:not([data-theme="light"]) .ap-shell :is(.cpt-bar, .bc-bar) {
+  height: 6px;
+  background: rgb(255 240 220 / 0.07);
+  box-shadow: none;
+}
+:root:not([data-theme="light"]) .ap-shell :is(.cpt-bar, .bc-bar) i {
+  background: var(--grad);
+  box-shadow: 0 0 12px rgb(242 185 94 / 0.55);
+}
+
+/* ── buttons: solid gold primary that glows, crisp ghost ───────────────── */
+:root:not([data-theme="light"]) .ap-shell .btn-primary {
+  background: var(--grad) !important;
+  color: var(--on-gold) !important;
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 6px 18px -8px rgb(242 185 94 / 0.6) !important;
+  transition: box-shadow 0.2s var(--ease), transform 0.15s var(--ease), filter 0.2s var(--ease);
+}
+:root:not([data-theme="light"]) .ap-shell .btn-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4), var(--glow-gold) !important;
+}
+:root:not([data-theme="light"]) .ap-shell .btn-primary:active:not(:disabled) {
+  transform: translateY(1px);
+}
+:root:not([data-theme="light"]) .ap-shell .btn-ghost,
+:root:not([data-theme="light"]) .ap-shell .btn:not(.btn-primary):not(.btn-text):not(.btn-danger) {
+  background: #171512;
+  box-shadow: inset 0 0 0 1px var(--hair-2);
+  color: var(--ink);
+}
+:root:not([data-theme="light"]) .ap-shell .btn-ghost:hover:not(:disabled),
+:root:not([data-theme="light"]) .ap-shell .btn:not(.btn-primary):not(.btn-text):not(.btn-danger):hover:not(:disabled) {
+  background: #201d19;
+  box-shadow: inset 0 0 0 1px rgb(255 240 220 / 0.24);
+}
+
+/* ── inputs, pills, chips ──────────────────────────────────────────────── */
+:root:not([data-theme="light"]) .ap-shell .input {
+  background: var(--field) !important;
+  box-shadow: inset 0 0 0 1px var(--hair-2) !important;
+}
+:root:not([data-theme="light"]) .ap-shell .input:focus {
+  box-shadow: inset 0 0 0 1px var(--gold-line), 0 0 0 4px rgb(242 185 94 / 0.12) !important;
+}
+:root:not([data-theme="light"]) .ap-shell :is(.pill-btn[aria-pressed="true"], .seg button[aria-pressed="true"]) {
+  background: rgb(242 185 94 / 0.12) !important;
+  box-shadow: inset 0 0 0 1px var(--gold-line) !important;
+  color: var(--ink) !important;
+}
+
+/* ── tables ────────────────────────────────────────────────────────────── */
+:root:not([data-theme="light"]) .ap-shell :is(.ap-tbl, .cs-tbl) tbody tr {
+  transition: background 0.15s var(--ease);
+}
+:root:not([data-theme="light"]) .ap-shell :is(.ap-tbl, .cs-tbl) tbody tr:hover {
+  background: rgb(255 240 220 / 0.03);
+}
+:root:not([data-theme="light"]) .ap-shell :is(.ap-tbl, .cs-tbl) :is(td, th) {
+  border-color: var(--hair);
+}
+
+/* ── banners and notices: a coloured dot field on the left edge ────────── */
+:root:not([data-theme="light"]) .ap-shell :is(.ap-banner, .notice) {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+:root:not([data-theme="light"]) .ap-shell :is(.ap-banner, .notice)::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 110px;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--dots-gold);
+  background-size: 7px 7px;
+  -webkit-mask-image: linear-gradient(90deg, #000, transparent);
+  mask-image: linear-gradient(90deg, #000, transparent);
+  opacity: 0.8;
+}
+:root:not([data-theme="light"]) .ap-shell :is(.ap-banner.bad, .notice.bad)::after {
+  background-image: var(--dots-bad);
+}
+:root:not([data-theme="light"]) .ap-shell :is(.ap-banner.warn, .notice.warn)::after {
+  background-image: var(--dots-warn);
+}
+:root:not([data-theme="light"]) .ap-shell .notice.good::after {
+  background-image: var(--dots-good);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-theme="light"]) .ap-shell .ap-dot.is-go {
+    animation: none;
+  }
+}

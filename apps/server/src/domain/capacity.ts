@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma.js";
 import { formatUsd, PRICE_PER_EMAIL } from "./money.js";
 import { poolCapacity } from "./sending/pool.js";
+import { SUPPLIER_WARMED_LADDER_DAY } from "./pool/lifecycle.js";
 import { WARMUP_DAYS_TO_ACTIVE, VOLUME_MAX, VOLUME_MIN, VOLUME_PRESETS, VOLUME_RECOMMEND_CAP, VOLUME_RECOMMEND_MARKET_DAYS, VOLUME_STEP } from "../config/plans.js";
 import { WORKING_DAYS_PER_MONTH } from "./usage.js";
 import { SEQUENCE_EMAILS } from "./money.js";
@@ -29,14 +30,16 @@ export async function capacityFor(orgId: string | null, now = new Date()): Promi
       where: { autopilotEnabled: true, ...(orgId ? { organizationId: { not: orgId } } : {}), organization: { kind: "CUSTOMER", onboarding: { launchedAt: { not: null } } } },
       _sum: { dailyBudgetDecicents: true },
     }),
-    prisma.sendingDomain.findMany({ where: { organizationId: null, status: { in: ["AGING", "WARMING"] } }, select: { status: true, agingUntil: true, warmupStartedAt: true } }),
+    prisma.sendingDomain.findMany({ where: { organizationId: null, status: { in: ["AGING", "WARMING"] } }, select: { status: true, agingUntil: true, warmupStartedAt: true, externalWarmup: true } }),
   ]);
   const committed = Number((committedAgg._sum.dailyBudgetDecicents ?? 0n) / PRICE_PER_EMAIL);
   let moreOn: Date | null = null;
   for (const d of upcoming) {
     const start = d.status === "WARMING" ? d.warmupStartedAt : d.agingUntil;
     if (!start) continue;
-    const live = new Date(start.getTime() + WARMUP_DAYS_TO_ACTIVE * DAY);
+    // A supplier-warmed domain joins the ladder part way up (day 8), so it reaches full capacity a week sooner.
+    const ladderDays = d.externalWarmup ? WARMUP_DAYS_TO_ACTIVE - SUPPLIER_WARMED_LADDER_DAY : WARMUP_DAYS_TO_ACTIVE;
+    const live = new Date(start.getTime() + ladderDays * DAY);
     if (live > now && (!moreOn || live < moreOn)) moreOn = live;
   }
   return { total, committed, available: Math.max(0, total - committed), moreOn };

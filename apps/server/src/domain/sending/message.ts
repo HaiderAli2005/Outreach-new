@@ -1,3 +1,4 @@
+import { languageInfo } from "../languages.js";
 import { randomUUID } from "node:crypto";
 import type { OutboundMessage } from "./transport/types.js";
 
@@ -85,7 +86,9 @@ export function firstNameOf(displayName: string): string {
  * the unsubscribe one: unsubscribing works from the mail app's own button (List-Unsubscribe, one click) or by
  * replying. Follow-ups add the unsubscribe link on the sending domain.
  */
-export function composeBody(o: { text: string; senderFirstName: string; footer: string; unsubscribeUrl: string | null }): string {
+export function composeBody(o: { text: string; senderFirstName: string; footer: string; unsubscribeUrl: string | null; language?: string | null }): string {
   const text = o.text.split(SENDER_FIRST_NAME).join(o.senderFirstName).trim();
-  return [text, `Best,\n${o.senderFirstName}`, o.footer.trim(), o.unsubscribeUrl ? `Unsubscribe: ${o.unsubscribeUrl}` : ""].filter(Boolean).join("\n\n");
+  // The sign-off and unsubscribe label match the email's language.
+  const l = languageInfo(o.language);
+  return [text, `${l.signoff}\n${o.senderFirstName}`, o.footer.trim(), o.unsubscribeUrl ? `${l.unsubscribe}: ${o.unsubscribeUrl}` : ""].filter(Boolean).join("\n\n");
 }

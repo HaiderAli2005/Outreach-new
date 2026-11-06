@@ -7,6 +7,7 @@ const PLATFORM_FALLBACK: Record<IntegrationProvider, string | undefined> = {
   APOLLO: env.APOLLO_API_KEY,
   MILLIONVERIFIER: env.MILLIONVERIFIER_API_KEY,
   SLACK_WEBHOOK: env.SLACK_WEBHOOK_URL,
+  GOOGLE_PLACES: env.GOOGLE_PLACES_API_KEY,
 };
 
 export async function getCredential(orgId: string, provider: IntegrationProvider): Promise<string | null> {

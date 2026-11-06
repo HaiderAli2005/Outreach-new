@@ -1,3 +1,4 @@
+import { languageInfo } from "./languages.js";
 import type { OrgSettings } from "@prisma/client";
 
 /**
@@ -15,11 +16,14 @@ export function replySignature(
   return [block, opts.cold ? optOutLine(s) : ""].filter(Boolean).join("\n\n");
 }
 
-export function optOutLine(s: Pick<OrgSettings, "optOutLine" | "language">): string {
-  if (s.optOutLine?.trim()) return s.optOutLine.trim();
-  return s.language === "sv"
-    ? "Om det här inte är aktuellt, säg bara till så hör jag inte av mig igen."
-    : "If this isn't relevant, just say so and I won't reach out again.";
+/**
+ * The opt-out line, in the email's language. The customer's own line is written in their workspace language, so it
+ * is used only for emails in that language; others get ours, translated.
+ */
+export function optOutLine(s: Pick<OrgSettings, "optOutLine" | "language">, emailLanguage?: string | null): string {
+  const lang = emailLanguage ?? s.language;
+  if (s.optOutLine?.trim() && lang === s.language) return s.optOutLine.trim();
+  return languageInfo(lang).optOut;
 }
 
 const RTL_CHARS = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/g;

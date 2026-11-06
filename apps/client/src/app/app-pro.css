@@ -1,0 +1,366 @@
+/*
+ * The cockpit's premium layer, for both themes (colours come from each theme's tokens):
+ *   the live status ring, today's sends line, friendly empty tiles, cards that arrive one after another,
+ *   one font for numbers, a warm tone per person's avatar, and a quiet "Stop outreach".
+ * Dark-only glow and light-only softening sit at the end, scoped to each theme.
+ */
+
+/* ── one font: numbers and times in the cockpit and its tables use the sans with even-width figures ────────── */
+.ap-shell .cpt,
+.ap-shell .cs-tbl,
+.ap-shell .ap-tbl {
+  --font-geist-mono: var(--font-geist-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── the live status: ring on the left of the words ────────────────────────────────────────────────────── */
+.ap-shell .cpt-hero-t.is-live {
+  flex-direction: row;
+  align-items: center;
+  gap: 22px;
+}
+.ap-shell .cpt-live-t {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+.ap-shell .cpt-ring {
+  position: relative;
+  width: 112px;
+  height: 112px;
+  flex: none;
+}
+.ap-shell .cpt-ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  overflow: visible;
+}
+.ap-shell .cpt-ring circle {
+  fill: none;
+  stroke-width: 8;
+}
+.ap-shell .cpt-ring .trk {
+  stroke: var(--hair);
+}
+.ap-shell .cpt-ring .val {
+  stroke: var(--gold);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1.4s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.ap-shell .cpt-ring .mid {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.ap-shell .cpt-ring .mid b {
+  font: 650 21px/1.1 var(--font-geist-sans), sans-serif;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.ap-shell .cpt-ring .mid small {
+  margin-top: 2px;
+  font: 400 11px var(--font-geist-sans), sans-serif;
+  color: var(--ink-3);
+}
+
+/* ── today's sends ─────────────────────────────────────────────────────────────────────────────────────── */
+.ap-shell .cpt-day {
+  display: grid;
+  gap: 6px;
+}
+.ap-shell .cpt-day-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.ap-shell .cpt-day-h small {
+  font: 400 12px var(--font-geist-sans), sans-serif;
+  color: var(--ink-3);
+}
+.ap-shell .cpt-day-h small {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.ap-shell .cpt-day-live {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--good);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 18%, transparent);
+}
+/* A small column chart: columns stand on the baseline, the part of the day already gone is shaded, and "now" is a
+   line with a dot on top. Sent is gold; still to go is a soft solid tone, so it reads as booked, not missing. */
+.ap-shell .cpt-day-track {
+  position: relative;
+  height: 46px;
+  margin: 12px 0 0;
+}
+.ap-shell .cpt-day-track .past {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 6px 0 0 6px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--gold) 0%, transparent), color-mix(in srgb, var(--gold) 7%, transparent));
+}
+.ap-shell .cpt-day-track .base {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--hair-2, var(--hair));
+}
+.ap-shell .cpt-day-track .tick {
+  position: absolute;
+  bottom: -4px;
+  width: 1px;
+  height: 4px;
+  margin-left: -0.5px;
+  background: var(--hair-2, var(--hair));
+}
+.ap-shell .cpt-day-track .bin {
+  position: absolute;
+  bottom: 1px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 1px;
+}
+.ap-shell .cpt-day-track .bin i {
+  display: block;
+  width: 100%;
+}
+.ap-shell .cpt-day-track .bin i:first-child {
+  border-radius: 3px 3px 0 0;
+}
+.ap-shell .cpt-day-track .bin .sent {
+  background: linear-gradient(180deg, var(--gold), color-mix(in srgb, var(--gold) 75%, var(--surface)));
+}
+.ap-shell .cpt-day-track .bin .booked {
+  background: color-mix(in srgb, var(--chart-2) 58%, transparent);
+}
+.ap-shell .cpt-day-track .bin:hover i {
+  filter: brightness(1.15);
+}
+.ap-shell .cpt-day-track .now {
+  position: absolute;
+  top: -2px;
+  bottom: 0;
+  width: 1.5px;
+  margin-left: -0.75px;
+  background: var(--ink);
+}
+.ap-shell .cpt-day-track .now::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  margin-left: -3.5px;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.ap-shell .cpt-day-ax {
+  position: relative;
+  height: 14px;
+  margin-top: 8px;
+  font: 400 11px var(--font-geist-sans), sans-serif;
+  color: var(--ink-4);
+}
+.ap-shell .cpt-day-ax span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.ap-shell .cpt-day-ax span.first {
+  transform: translateX(-7px);
+}
+.ap-shell .cpt-day-ax span.last {
+  transform: translateX(calc(-100% + 7px));
+}
+.ap-shell .cpt-day-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font: 400 12.5px var(--font-geist-sans), sans-serif;
+  color: var(--ink-3);
+}
+.ap-shell .cpt-day-key span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ap-shell .cpt-day-key i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.ap-shell .cpt-day-key i.sent {
+  background: var(--gold);
+}
+.ap-shell .cpt-day-key i.booked {
+  background: color-mix(in srgb, var(--chart-2) 58%, transparent);
+}
+
+/* ── a zero that is only early days ────────────────────────────────────────────────────────────────────── */
+.ap-shell .cpt-kpi-empty {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-height: 112px;
+  padding-top: 12px;
+}
+.ap-shell .cpt-kpi-empty b {
+  font: 650 19px var(--font-geist-sans), sans-serif;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.ap-shell .cpt-kpi-empty p {
+  margin: 0;
+  max-width: 220px;
+  font: 400 12.5px/1.5 var(--font-geist-sans), sans-serif;
+  color: var(--gold);
+}
+
+/* ── the chart fill under a line ───────────────────────────────────────────────────────────────────────── */
+.ap-shell .ch-mini-area {
+  animation: pro-fade 0.9s ease-out 0.25s both;
+}
+
+/* ── cards arrive one after another ────────────────────────────────────────────────────────────────────── */
+.ap-shell .cpt > *,
+.ap-shell .cpt-kpis > .cpt-kpi {
+  animation: pro-in 0.55s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.ap-shell .cpt > :nth-child(2) { animation-delay: 0.05s; }
+.ap-shell .cpt > :nth-child(3) { animation-delay: 0.1s; }
+.ap-shell .cpt > :nth-child(4) { animation-delay: 0.15s; }
+.ap-shell .cpt > :nth-child(5) { animation-delay: 0.2s; }
+.ap-shell .cpt > :nth-child(n + 6) { animation-delay: 0.25s; }
+.ap-shell .cpt-kpis > .cpt-kpi:nth-child(2) { animation-delay: 0.24s; }
+.ap-shell .cpt-kpis > .cpt-kpi:nth-child(3) { animation-delay: 0.28s; }
+.ap-shell .cpt-kpis > .cpt-kpi:nth-child(4) { animation-delay: 0.32s; }
+@keyframes pro-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes pro-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ── "Stop outreach": quiet until you mean it ──────────────────────────────────────────────────────────── */
+.ap-shell .btn.ap-stop {
+  color: var(--ink-3) !important;
+  background: transparent !important;
+  box-shadow: inset 0 0 0 1px var(--hair) !important;
+}
+.ap-shell .btn.ap-stop:hover:not(:disabled) {
+  color: var(--bad) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bad) 45%, transparent) !important;
+  background: color-mix(in srgb, var(--bad) 7%, transparent) !important;
+}
+
+/* ── a warm tone per person ────────────────────────────────────────────────────────────────────────────── */
+:root:not([data-theme="light"]) .av.av-t0 { background: #3a2c5e; color: #d4caff; }
+:root:not([data-theme="light"]) .av.av-t1 { background: #1d4a39; color: #a8f0cc; }
+:root:not([data-theme="light"]) .av.av-t2 { background: #5a2b24; color: #ffc3b6; }
+:root:not([data-theme="light"]) .av.av-t3 { background: #4d3a12; color: #f8d48d; }
+:root:not([data-theme="light"]) .av.av-t4 { background: #1e3c56; color: #b5dbff; }
+:root:not([data-theme="light"]) .av.av-t5 { background: #4c2440; color: #ffbfe3; }
+html[data-theme="light"] .av.av-t0 { background: #e9e4fb; color: #3c3489; }
+html[data-theme="light"] .av.av-t1 { background: #dcf1e7; color: #085041; }
+html[data-theme="light"] .av.av-t2 { background: #f9e3dc; color: #712b13; }
+html[data-theme="light"] .av.av-t3 { background: #f7e7c7; color: #633806; }
+html[data-theme="light"] .av.av-t4 { background: #dfeaf7; color: #0c447c; }
+html[data-theme="light"] .av.av-t5 { background: #f7e0ec; color: #72243e; }
+
+/* ── dark only: the ring and the line glow ─────────────────────────────────────────────────────────────── */
+:root:not([data-theme="light"]) .ap-shell .cpt-ring .val {
+  filter: drop-shadow(0 0 6px rgb(242 185 94 / 0.7));
+}
+:root:not([data-theme="light"]) .ap-shell .cpt-day-track .bin .sent {
+  box-shadow: 0 0 8px rgb(242 185 94 / 0.35);
+}
+
+@media (max-width: 760px) {
+  .ap-shell .cpt-hero-t.is-live {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ap-shell .cpt > *,
+  .ap-shell .cpt-kpis > .cpt-kpi,
+  .ap-shell .ch-mini-area {
+    animation: none;
+  }
+  .ap-shell .cpt-ring .val {
+    transition: none;
+  }
+}
+
+/* ── the first campaign card: one column, one status line, one credit pill ─────────────────────────────── */
+.ap-shell .cpt-hero.is-first .cpt-hero-main {
+  grid-template-columns: 1fr;
+}
+.ap-shell .cpt-hero.is-first .cpt-hero-t > p {
+  max-width: 520px;
+}
+.ap-shell .cpt-hero.is-first .cpt-progress {
+  max-width: 560px;
+}
+.ap-shell .cpt-hero.is-first .cpt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.ap-shell .cpt-credit {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 11px;
+  border-radius: 99px;
+  font: 500 12px var(--font-geist-sans), sans-serif;
+  color: var(--ink-3);
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+
+/* ── today in one line: emails against the daily amount, and why when it is lower ──────────────────────── */
+.ap-shell .cpt-dayline {
+  margin: 10px 0 0;
+  font: 400 13px/1.55 var(--font-geist-sans), sans-serif;
+  color: var(--ink-3);
+}
+.ap-shell .cpt-dayline b {
+  font-weight: 600;
+  color: var(--ink);
+}
+.ap-shell .cpt-dayline a {
+  color: var(--gold);
+  font-weight: 550;
+}
+.ap-shell .cpt-dayline-cap {
+  display: block;
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--ink-4);
+}

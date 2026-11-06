@@ -50,6 +50,11 @@ function fakeStripe(opts: { charge?: "ok" | "decline" | "auth"; listed?: Record<
         },
       }),
     },
+    checkout: {
+      sessions: {
+        create: async (...args: unknown[]) => (calls.push({ op: "checkout.sessions.create", args }), { id: "cs_test_1", url: "https://checkout.stripe.com/c/pay/cs_test_1" }),
+      },
+    },
     setupIntents: {
       create: async (...args: unknown[]) => {
         calls.push({ op: "setupIntents.create", args });
@@ -218,8 +223,13 @@ describe("auto-reload", () => {
     walk(join(__dirname, "../src"));
     const offSession = files.filter((f) => /off_session:\s*true/.test(readFileSync(f, "utf8")));
     expect(offSession.map((f) => f.split(/[\\/]/).pop())).toEqual(["autoReload.ts"]);
-    const legacy = files.filter((f) => /["'`]price_[A-Za-z0-9]{6,}|checkout\.session|billingPortal|billing\.portal|customer\.subscription|subscriptions?\./i.test(readFileSync(f, "utf8").replace(/\/\/.*|\/\*[\s\S]*?\*\//g, "")));
+    const code = (f: string) => readFileSync(f, "utf8").replace(/\/\/.*|\/\*[\s\S]*?\*\//g, "");
+    const legacy = files.filter((f) => /["'`]price_[A-Za-z0-9]{6,}|billingPortal|billing\.portal|customer\.subscription|subscriptions?\./i.test(code(f)));
     expect(legacy).toEqual([]);
+    // Stripe Checkout is used only to save a card on Stripe's own page (setup mode): never to charge or subscribe.
+    const checkout = files.filter((f) => /checkout\.session/i.test(code(f)));
+    for (const f of checkout) expect(code(f)).not.toMatch(/mode:\s*["'`](payment|subscription)["'`]/);
+    expect(checkout.map((f) => f.split(/[\\/]/).pop())).toEqual(["billing.service.ts"]);
   });
 
   it("never charges without a recorded mandate, even if the switch were on", async () => {
@@ -310,6 +320,30 @@ describe("adding a card", () => {
     // There is no way to take the free credit without a card.
     await api().post("/api/v1/billing/trial").set(t.auth).expect(404);
     expect(await balanceOf(t.orgId)).toBe(0n);
+  });
+
+  it("sends the customer to Stripe's hosted page to save the card, charging nothing", async () => {
+    const t = await createTenant({ subscribed: false });
+    const f = use(fakeStripe());
+    const res = await api()
+      .post("/api/v1/billing/card-checkout")
+      .set(t.auth)
+      .set("Idempotency-Key", "card-checkout-1")
+      .send({ returnPath: "/onboarding?card=1", cancelPath: "/onboarding" })
+      .expect(200);
+    expect(res.body.data.url.startsWith("https://checkout.stripe.com/")).toBe(true);
+    expect(f.calls.find((c) => c.op === "checkout.sessions.create")!.args[0]).toMatchObject({
+      mode: "setup",
+      customer: "cus_test_1",
+      // The same tag as the in-app form, so setup_intent.succeeded still adds the free credit.
+      setup_intent_data: { metadata: { kind: "onboarding_card", organizationId: t.orgId } },
+      success_url: "http://localhost:3000/onboarding?card=1",
+      cancel_url: "http://localhost:3000/onboarding",
+    });
+    expect(f.calls.filter((c) => c.op === "paymentIntents.create")).toHaveLength(0);
+    // Stripe only ever sends the customer back to this site.
+    for (const returnPath of ["https://evil.example/x", "//evil.example/x"])
+      await api().post("/api/v1/billing/card-checkout").set(t.auth).set("Idempotency-Key", "card-checkout-2").send({ returnPath, cancelPath: "/onboarding" }).expect(422);
   });
 
   it("grants the $10 free credit once when the card is saved, however often Stripe says so", async () => {
